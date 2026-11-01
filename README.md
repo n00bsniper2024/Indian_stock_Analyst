@@ -77,6 +77,42 @@ Open <http://localhost:8501>.
 3. The app listens on `localhost` only by default, so it is not exposed to the internet — keep it that way unless you
    add authentication.
 
+### Run it permanently (no terminal needed)
+
+`run.sh` only works while that terminal stays open. To have the dashboard always available, install it as a
+background service once — it then starts on every boot and restarts itself if it crashes.
+
+**Linux (systemd — most servers and desktops):**
+```bash
+bash scripts/install-service.sh
+```
+That's it. Useful commands afterwards:
+
+| Task | Command |
+|---|---|
+| Is it running? | `sudo systemctl status indian-stock-analyst` |
+| See live logs | `journalctl -u indian-stock-analyst -f` |
+| Restart (e.g. after editing `.env`) | `sudo systemctl restart indian-stock-analyst` |
+| Get the latest version | `bash scripts/update.sh` (pulls, updates packages, restarts) |
+| Remove the service | `bash scripts/uninstall-service.sh` |
+
+**Windows:** run `scripts\install-autostart.bat` once — the dashboard then starts hidden at every login
+(undo with `scripts\remove-autostart.bat`). macOS: use `bash scripts/run.sh` or a LaunchAgent.
+
+#### Opening it from another computer (e.g. your laptop, when the app runs on a server)
+The service keeps the *app* running, but VS Code's port forwarding only works while VS Code is connected.
+Pick one way to reach it without VS Code:
+
+| Option | How | Security |
+|---|---|---|
+| **SSH tunnel** (recommended, nothing exposed) | on your laptop: `ssh -N -L 8501:localhost:8501 user@your-server`, then open <http://localhost:8501> | only you, via your SSH login |
+| **Tailscale** (just open a URL, any device) | install [Tailscale](https://tailscale.com) on server + laptop/phone, then `bash scripts/install-service.sh --address <server's 100.x Tailscale IP>` | private network + app password |
+| **Your LAN** | `bash scripts/install-service.sh --address 0.0.0.0`, allow port 8501 only from your laptop's IP in the server firewall | app password; never port-forward this to the internet |
+
+Whenever `--address` is not `localhost`, the installer adds a random `ISA_PASSWORD` to `.env` and the dashboard asks
+for it — because anyone who can open the page can spend the API credits in your `.env`. Streamlit itself has no login,
+and this password gate is basic protection for a private network, not for the open internet.
+
 ### Try it without internet or keys
 ```bash
 bash scripts/run.sh --demo        # Windows: scripts\run.bat --demo
@@ -196,6 +232,7 @@ tests/                     pytest suite (runs offline on synthetic data)
 | Category shows only 50 stocks / "bundled snapshot" warning | NSE blocked the request (common on cloud servers); it retries next week or after **Refresh market data** |
 | `No price data … (.NS or .BO)` | check the NSE symbol (e.g. Zomato is now `ETERNAL`, Tata Motors PV is `TMPV`) |
 | AI error about the model | click **Load models** and pick one from the live list |
+| Dashboard stops when I close the terminal or VS Code | install it as a service: `bash scripts/install-service.sh`, and open it via an SSH tunnel or Tailscale (see "Run it permanently") |
 | `streamlit: command not found` | activate the environment first: `. .venv/bin/activate` (Windows: `.venv\Scripts\activate`) |
 
 ## Contributing

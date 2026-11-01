@@ -4,8 +4,11 @@ Run:  streamlit run app.py
 """
 from __future__ import annotations
 
+import hmac
 import json
+import os
 import re
+import time
 from dataclasses import replace
 
 import pandas as pd
@@ -24,6 +27,27 @@ from isa.universe import CATEGORIES, flat_categories, industries_from_nifty500, 
 from isa.valuation import pe_band, peer_table, valuation_summary
 
 st.set_page_config(page_title="Indian Stock Analyst", page_icon="📈", layout="wide", initial_sidebar_state="expanded")
+
+
+def _require_password() -> None:
+    """If ISA_PASSWORD is set (e.g. when the service is reachable from other devices), ask for it once per session."""
+    expected = os.getenv("ISA_PASSWORD", "")
+    if not expected or st.session_state.get("_auth_ok"):
+        return
+    st.markdown("## 📈 Indian Stock Analyst")
+    with st.form("login"):
+        entered = st.text_input("Password", type="password")
+        ok = st.form_submit_button("Open dashboard")
+    if ok:
+        if hmac.compare_digest(entered.encode(), expected.encode()):
+            st.session_state["_auth_ok"] = True
+            st.rerun()
+        time.sleep(1)  # slow down guessing
+        st.error("Wrong password.")
+    st.stop()
+
+
+_require_password()
 
 st.markdown(
     """<style>
