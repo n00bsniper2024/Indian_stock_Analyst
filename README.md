@@ -43,7 +43,7 @@ powered by the same engine.
 | **News & results** | **Stock universe** | |
 | ![](docs/screenshots/news_results.png) | ![](docs/screenshots/stock_universe.png) | |
 
-*Screenshots use live Yahoo data from 1 Nov 2026 and are illustrations, not views on any stock.*
+*Screenshots use live data (Yahoo Finance, NSE, Google News) from 2 Nov 2026 and are illustrations, not views on any stock.*
 
 ### About the ratings — read this once
 - They are a **transparent model signal**, not personalised advice. Every rating shows its inputs, weights and

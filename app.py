@@ -136,8 +136,14 @@ def cached_pack(symbol: str, rf: float, erp: float, tg: float, with_peers: bool,
     return build_fact_pack(symbol, settings, with_peers=with_peers, sd=sd, growth_override=g_override)
 
 
+def esc(text) -> str:
+    """Make external/AI text safe for st.markdown: '$...$' would otherwise render as LaTeX maths,
+    and square brackets in headlines would break [link](url) syntax."""
+    return str(text).replace("\\", "\\\\").replace("$", "\\$").replace("[", "(").replace("]", ")")
+
+
 def tag_badges(text: str) -> str:
-    text = str(text)
+    text = str(text).replace("$", "\\$")
     text = text.replace("[DATA]", ":green-badge[DATA]").replace("[INFERENCE]", ":blue-badge[INFERENCE]")
     return text.replace("[ASSUMPTION]", ":orange-badge[ASSUMPTION]")
 
@@ -798,19 +804,19 @@ def stock_analysis() -> None:
             if nb.get("attention_items"):
                 st.markdown("#### ⚠️ Filings that deserve attention")
                 for a in nb["attention_items"]:
-                    st.markdown(f"- `{a['date'][:10]}` **{', '.join(a['tags'])}** — {a['text'][:220]}" + (f" [PDF]({a['link']})" if a.get("link") else ""))
+                    st.markdown(f"- `{a['date'][:10]}` **{', '.join(a['tags'])}** — {esc(a['text'][:220])}" + (f" [PDF]({a['link']})" if a.get("link") else ""))
             c1, c2 = st.columns(2)
             with c1:
                 st.markdown("#### 🏛️ Exchange announcements (NSE)")
                 tags_all = sorted({t for a in nb.get("announcements", []) for t in a["tags"]})
                 pick = st.multiselect("Filter by type", tags_all, default=[t for t in tags_all if t not in ("Other", "Routine compliance")], key=f"ann_{symbol}")
                 for a in [a for a in nb.get("announcements", []) if set(a["tags"]) & set(pick)][:25]:
-                    st.markdown(f"- `{a['date'][:10]}` *{', '.join(a['tags'])}* — {a['text'][:200]}" + (f" [PDF]({a['link']})" if a.get("link") else ""))
+                    st.markdown(f"- `{a['date'][:10]}` *{', '.join(a['tags'])}* — {esc(a['text'][:200])}" + (f" [PDF]({a['link']})" if a.get("link") else ""))
             with c2:
                 st.markdown("#### 📰 Press headlines (Google News, India)")
                 for n in nb.get("news", [])[:20]:
                     t_icon = "🟢" if n["tone"] > 0 else "🔴" if n["tone"] < 0 else "⚪"
-                    st.markdown(f"- {t_icon} `{n['date']}` [{n['title']}]({n['link']}) — *{n['source']}*")
+                    st.markdown(f"- {t_icon} `{n['date']}` [{esc(n['title'])}]({n['link']}) — *{esc(n['source'])}*")
                 st.caption("Tone dots are a rough keyword count. Headlines from aggregators often disagree on numbers — trust exchange filings first.")
             c1, c2 = st.columns(2)
             with c1:
@@ -888,7 +894,7 @@ def stock_analysis() -> None:
         if sd.news:
             st.markdown("#### Recent headlines (Yahoo)")
             for n in sd.news[:8]:
-                st.markdown(f"- [{n['title']}]({n['url']}) — {n['publisher']} {n['date']}" if n.get("url") else f"- {n['title']}")
+                st.markdown(f"- [{esc(n['title'])}]({n['url']}) — {esc(n['publisher'])} {n['date']}" if n.get("url") else f"- {esc(n['title'])}")
 
 
 if view == VIEWS[0]:

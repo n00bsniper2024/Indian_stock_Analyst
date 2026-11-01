@@ -139,6 +139,8 @@ def annual_table(sd: StockData) -> pd.DataFrame:
     t["Inventory days"] = 365 * t["Inventory"] / t["Revenue"]
     t["Payout %"] = 100 * t["Dividends"] / t["Net profit"].where(t["Net profit"] > 0)
     t.index = [f"FY{str(d.year + (1 if d.month > 3 else 0))[-2:]}" for d in idx]
+    # Yahoo sometimes has an extra balance-sheet year with no income statement: drop such empty years
+    t = t[t["Revenue"].notna() | t["Net profit"].notna()]
     return t.loc[:, t.notna().any()]
 
 
