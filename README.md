@@ -25,6 +25,10 @@ powered by the same engine.
 | **Technical** | Candlestick chart with EMA 20/50/200, Supertrend, Bollinger, auto support/resistance, volume, RSI, MACD · timeframes **1H, 4H, Daily, Weekly, Monthly** · trend matrix showing *why* each timeframe is up/down · Fibonacci, regression channel, golden/death crosses, 52-week breakouts, volume spikes, RSI divergence, candlestick shapes |
 | **Fundamentals** | Revenue/EBITDA/profit, margins, ROE/ROCE/ROA, profit vs cash flow, debt/equity, working-capital days, quarterly YoY · **Piotroski F-score**, **Altman Z''-EM** (emerging-market variant), rule-based red flags |
 | **Valuation** | P/E, EV/EBITDA, P/B, PEG, yields · **football field** · **DCF with WACC × growth sensitivity heatmap** · **reverse DCF** (growth the price already implies) · own P/E history band · justified P/B for banks/NBFCs · peer medians |
+| **Ratings by horizon** | Model rating (Strong Buy → Strong Sell) for **1 week, 4 weeks, 3 months, 6 months, 1 year and long term**, each built from the evidence that matters at that horizon (trend & breakouts short-term → earnings momentum → fundamentals & valuation long-term), with confidence, a best-fit-horizon suggestion, entry zone / stop / targets / reward-risk, and a **historical check**: how often this stock actually rose after similar setups vs on any day |
+| **Levels & breakouts** | Support and resistance **zones** (price bands, not lines) and breakout patterns on **1H, 4H, 1D and 1W** — zone breakouts with volume confirmation & failed-breakout detection, consolidation ranges, ascending/descending/symmetrical triangles, wedges, channels, double tops/bottoms, trendline breaks, 52-week/all-time-high breakouts, Bollinger squeezes, NR7/inside bars — each with trigger, target and invalidation, drawn on the chart |
+| **News & results** | NSE exchange filings (tagged: results, orders, M&A, fund raising, promoter/pledge/SAST, ratings, management, legal), alerts for filings that need attention, next results date (event risk), board meetings, dividends/bonus/splits, Google News (India) headlines, latest quarterly results |
+| **Stock universe** | All ~750 Nifty Total Market stocks classified by **NSE sector, finer industry, market-cap bucket (large/mid/small/micro) and index membership**; filter and browse as a sector → industry → stock map |
 | **Peers** | Same-industry companies (NSE classification) on a P/E vs ROE bubble map + table |
 | **AI report** | Verdict, health, fundamentals, valuation, technical view per timeframe, bull/bear case, catalysts, India-specific risks, what would change the view, quarterly checklist, data gaps · every claim tagged **[DATA] / [INFERENCE] / [ASSUMPTION]** · **number audit** flags any figure the AI wrote that is not in the data · download as HTML (with charts) or Markdown |
 | **Ask AI** | Chat about the stock; answers grounded in the same data |
@@ -34,8 +38,21 @@ powered by the same engine.
 | ![](docs/screenshots/market_overview.png) | ![](docs/screenshots/technical.png) | ![](docs/screenshots/valuation.png) |
 | **Trend matrix** | **Fundamentals** | **Peers** |
 | ![](docs/screenshots/trend_matrix.png) | ![](docs/screenshots/fundamentals.png) | ![](docs/screenshots/peers.png) |
+| **Ratings by horizon** | **Horizons & historical check** | **Levels & breakouts** |
+| ![](docs/screenshots/horizon_ratings.png) | ![](docs/screenshots/horizons_plan.png) | ![](docs/screenshots/levels_breakouts.png) |
+| **News & results** | **Stock universe** | |
+| ![](docs/screenshots/news_results.png) | ![](docs/screenshots/stock_universe.png) | |
 
 *Screenshots use live Yahoo data from 1 Nov 2026 and are illustrations, not views on any stock.*
+
+### About the ratings — read this once
+- They are a **transparent model signal**, not personalised advice. Every rating shows its inputs, weights and
+  the past behaviour of the same setup on that stock. The AI may move a rating by at most one notch and must say why.
+- **Short horizons are mostly noise.** A 1-week rating is never shown with high confidence. On many large caps the
+  historical check shows that a "good" technical setup rose about as often as any random week — when it does, the
+  dashboard says so.
+- Upcoming quarterly results inside a horizon are flagged: the rating can flip on the numbers.
+- If you share these ratings with others as recommendations, SEBI's Research Analyst rules apply to you.
 
 ### Why the numbers can be trusted more than a chatbot's
 Every ratio, score, level and DCF is **computed in Python** (`isa/`). The AI only receives that "fact pack"
@@ -158,7 +175,10 @@ Model names change often, so the app lists them live from each provider (**Load 
 | Prices (daily since listing, hourly for 60 days) | Yahoo Finance via [`yfinance`](https://github.com/ranaroussi/yfinance) | free; quotes may be delayed; Yahoo throttles bursts — the app caches on disk and backs off |
 | Financial statements | Yahoo Finance | only ~4–5 years annual and ~5 quarters; no point-in-time stamps |
 | Index constituents & industries | NSE public CSVs (`nsearchives.nseindia.com`) | refreshed weekly; bundled Nifty 50 fallback if NSE is unreachable |
-| Shareholding / promoter pledge | **not available** | Yahoo "insiders %" is shown only as a promoter proxy — check NSE/BSE shareholding filings |
+| Exchange filings, board meetings, corporate actions | NSE public APIs | NSE blocks some cloud/datacenter IPs — works from home/office connections; the app says when a feed failed |
+| News headlines | Google News RSS (India edition) | headlines only; aggregator numbers can conflict — filings come first |
+| Industry / cap classification | NSE index files + Yahoo industry, snapshot in `data/classification.csv` | refresh with `python -m isa.cli refresh-classification` (~10 min) |
+| Shareholding / promoter pledge | **not available** as numbers | pledge/SAST *filings* are flagged from NSE announcements | Yahoo "insiders %" is shown only as a promoter proxy — check NSE/BSE shareholding filings |
 | Bank metrics (NIM, GNPA, CASA, CAR) | **not available** | bank scores use ROE/ROA/growth/P/B only |
 
 **Built-in data checks.** Yahoo's Indian fundamentals have real defects — e.g. reported EPS not adjusted for bonus

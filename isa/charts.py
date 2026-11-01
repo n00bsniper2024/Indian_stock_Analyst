@@ -256,8 +256,11 @@ def relative_strength(close: pd.Series, bench: pd.Series | None, symbol: str, da
 
 
 # =========================================================================== category view
-def category_treemap(snap: pd.DataFrame, ret_col: str = "1D %") -> go.Figure:
+def category_treemap(snap: pd.DataFrame, ret_col: str = "1D %", group: str | None = None) -> go.Figure:
     d = snap.dropna(subset=[ret_col]).copy()
+    if group is None:
+        group = "Sector" if "Sector" in d and d["Sector"].nunique() > 1 else "Industry (detail)" if "Industry (detail)" in d else "Industry"
+    d["Industry"] = d[group].fillna("Other").astype(str)
     d["size"] = d["Turnover ₹cr (20D avg)"].clip(lower=0.1)
     lim = max(float(d[ret_col].abs().quantile(0.95)), 0.5)
     d["label"] = d["Symbol"] + "<br>" + d[ret_col].map(lambda v: f"{v:+.1f}%")
@@ -282,3 +285,76 @@ def returns_heatmap(snap: pd.DataFrame, top: int = 40) -> go.Figure:
                                hovertemplate="%{y} %{x}: %{z:+.2f}%<extra></extra>"))
     fig.update_yaxes(autorange="reversed")
     return _layout(fig, f"Returns across periods (top {len(d)} by traded value)", height=120 + 22 * len(d), legend=False)
+
+
+# =========================================================================== zones, breakouts, horizons
+RATING_COLORS = {"Strong Buy": "#0ca30c", "Buy": "#6cc56c", "Neutral": "#8a8980", "Sell": "#ec835a", "Strong Sell": "#d03b3b"}
+
+
+def zones_chart(df: pd.DataFrame, tf: dict[str, Any], title: str, intraday: bool, bars: int = 160) -> go.Figure:
+    """Candles + volume with support/resistance ZONES shaded and pattern lines/triggers drawn."""
+    d = df.iloc[-bars:].copy()
+    x = [str(i)[:16] for i in d.index] if intraday else d.index
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.8, 0.2])
+    fig.add_trace(go.Candlestick(x=x, open=d["Open"], high=d["High"], low=d["Low"], close=d["Close"], name="Price",
+                                 increasing=dict(line=dict(color=UP, width=1), fillcolor=UP),
+                                 decreasing=dict(line=dict(color=DOWN, width=1), fillcolor=DOWN), showlegend=False), 1, 1)
+    fig.add_trace(go.Bar(x=x, y=d["Volume"], marker_color=np.where(d["Close"] >= d["Open"], UP, DOWN), opacity=0.5,
+                         showlegend=False, name="Volume"), 2, 1)
+    z = tf.get("zones", {})
+    for i, s in enumerate(z.get("supports", [])):
+        fig.add_hrect(y0=s["low"], y1=s["high"], fillcolor="rgba(12,163,12,0.16)", line_width=0, row=1, col=1,
+                      annotation_text=f"S{i + 1} ₹{s['low']:,.0f}–{s['high']:,.0f} ({s['touches']}×)", annotation_position="bottom left",
+                      annotation_font=dict(color=MUTED, size=10))
+    for i, r in enumerate(z.get("resistances", [])):
+        fig.add_hrect(y0=r["low"], y1=r["high"], fillcolor="rgba(208,59,59,0.16)", line_width=0, row=1, col=1,
+                      annotation_text=f"R{i + 1} ₹{r['low']:,.0f}–{r['high']:,.0f} ({r['touches']}×)", annotation_position="top left",
+                      annotation_font=dict(color=MUTED, size=10))
+    first = str(d.index[0])[:16]
+    for p in tf.get("patterns", []):
+        col = UP if p["direction"] == "bullish" else DOWN if p["direction"] == "bearish" else WARN
+        for ln in p.get("lines", []):
+            if ln["x0"] < first:
+                continue
+            fig.add_shape(type="line", x0=ln["x0"], y0=ln["y0"], x1=ln["x1"], y1=ln["y1"], line=dict(color=col, width=2), row=1, col=1)
+        if p.get("trigger") and p["status"] != "forming" or (p.get("trigger") and p["pattern"] in ("Consolidation range", "Double bottom", "Double top")):
+            fig.add_hline(y=p["trigger"], line=dict(color=col, width=1.2, dash="dash"), row=1, col=1,
+                          annotation_text=f"{p['pattern']} trigger ₹{p['trigger']:,.0f}", annotation_position="top right",
+                          annotation_font=dict(color=col, size=10))
+    if intraday:
+        fig.update_xaxes(type="category", nticks=8)
+    else:
+        fig.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"])] if tf.get("timeframe") == "1 Day" else [])
+    fig.update_xaxes(rangeslider_visible=False)
+    _layout(fig, title, height=600, legend=False)
+    fig.update_layout(hovermode="x unified")
+    return fig
+
+
+def horizon_bars(horizons: dict[str, Any]) -> go.Figure:
+    names = [n for n, v in horizons.items() if v.get("score") is not None]
+    vals = [horizons[n]["score"] for n in names]
+    labels = [horizons[n]["rating"] for n in names]
+    fig = go.Figure(go.Bar(x=names, y=vals, marker=dict(color=[RATING_COLORS.get(l, NEUTRAL) for l in labels], cornerradius=4),
+                           text=[f"{l}<br>{v} · {horizons[n]['confidence']}" for n, l, v in zip(names, labels, vals)],
+                           textposition="outside", textfont=dict(color=TEXT, size=11),
+                           hovertemplate="%{x}: score %{y}<extra></extra>"))
+    for y, t in ((70, "Strong Buy"), (58, "Buy"), (45, "Neutral / Sell")):
+        fig.add_hline(y=y, line=dict(color=GRID, width=1, dash="dot"), annotation_text=t, annotation_font=dict(color=MUTED, size=10),
+                      annotation_position="top left")
+    fig.update_yaxes(range=[0, 105], title_text="Model score (0-100)")
+    return _layout(fig, "Model rating by investment horizon", height=340, legend=False)
+
+
+def history_compare(hist: dict[str, Any]) -> go.Figure:
+    names = [n for n, v in hist.items() if isinstance(v, dict) and v.get("available")]
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=names, y=[hist[n]["pct_positive_similar"] for n in names], name="After similar setups",
+                         marker=dict(color=S[0], cornerradius=4), text=[f"{hist[n]['pct_positive_similar']:.0f}%" for n in names],
+                         textposition="outside", textfont=dict(color=MUTED, size=10)))
+    fig.add_trace(go.Bar(x=names, y=[hist[n]["pct_positive_all_days"] for n in names], name="All days (baseline)",
+                         marker=dict(color=S[1], cornerradius=4), text=[f"{hist[n]['pct_positive_all_days']:.0f}%" for n in names],
+                         textposition="outside", textfont=dict(color=MUTED, size=10)))
+    fig.update_layout(barmode="group", bargroupgap=0.08)
+    fig.update_yaxes(range=[0, 105], title_text="% of times the stock was higher")
+    return _layout(fig, "Did this technical setup help in the past? (this stock, ~10 years)", height=340)

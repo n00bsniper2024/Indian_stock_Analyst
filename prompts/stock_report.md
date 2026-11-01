@@ -9,14 +9,16 @@ and thesis-tracker workflows):
    DCF tells you what growth the market already prices in — use it to judge expectations.
 5. Technicals across timeframes with key levels and invalidation.
 6. Bull case vs bear case — both must be falsifiable and specific.
-7. Catalysts and risks with an India lens; what would change your mind.
-8. A monitoring checklist the reader can track each quarter.
+7. News, results and exchange announcements — what changed recently and what is scheduled.
+8. Support/resistance zones and breakout patterns on 1H, 4H, 1D and 1W.
+9. Horizon-wise ratings (1 Week → Long term) starting from the model ratings, and a best-horizon suggestion.
+10. Catalysts and risks with an India lens; what would change your mind; a quarterly monitoring checklist.
 
 Return ONE JSON object with exactly these keys (strings may use **bold**; every bullet starts with an evidence tag):
 
 {{
   "verdict": {{
-    "stance": "Bullish | Neutral | Bearish",
+    "stance": "Bullish | Neutral | Bearish (overall, for the best-fit horizon)",
     "conviction": "Low | Medium | High",
     "time_horizon": "e.g. 12-24 months (fundamental) / 2-6 weeks (technical)",
     "one_liner": "thesis in <= 30 words"
@@ -51,6 +53,31 @@ Return ONE JSON object with exactly these keys (strings may use **bold**; every 
     "key_levels": {{"support": ["₹ levels with reason"], "resistance": ["₹ levels with reason"]}},
     "invalidation": "level or condition that would negate the current technical view",
     "chart_observations": ["tagged bullets: events, divergences, candlesticks, channel position, volume"]
+  }},
+  "horizon_ratings": [
+    {{"horizon": "1 Week | 4 Weeks | 3 Months | 6 Months | 1 Year | Long term (3Y+)",
+      "model_rating": "copy from horizon_view", "ai_rating": "Strong Buy | Buy | Neutral | Sell | Strong Sell",
+      "conviction": "Low | Medium | High",
+      "rationale": "1-2 tagged sentences; if ai_rating differs from model_rating, say exactly why",
+      "plan": "entry zone / stop / targets from horizon_view plan, or 'no attractive setup'"}}
+  ],
+  "investment_suggestion": {{
+    "best_horizon": "the horizon with the best risk-adjusted case, or 'none — wait'",
+    "summary": "3-4 tagged sentences: what to do over which duration and what to watch; no position sizing",
+    "avoid_if": "conditions under which this suggestion does not apply (e.g. results miss, breakdown below ₹X)"
+  }},
+  "levels_and_breakouts": [
+    {{"timeframe": "1 Hour | 4 Hour | 1 Day | 1 Week",
+      "support_zones": ["₹low–₹high (touches, why it matters)"],
+      "resistance_zones": ["₹low–₹high (touches)"],
+      "patterns": ["pattern — status — trigger ₹ / target ₹ / invalidation ₹"],
+      "read": "one tagged sentence: what a trader on this timeframe should watch next"}}
+  ],
+  "news_and_results": {{
+    "latest_results": "tagged summary of the most recent results evidence (filings, quarterly table, headlines; flag conflicts)",
+    "key_announcements": ["tagged bullets of material filings (orders, M&A, fund raising, pledge/SAST, rating, management, legal)"],
+    "news_sentiment": "Positive | Mixed | Negative | Not enough news",
+    "upcoming_events": ["results date, ex-dates, other scheduled events from the fact pack"]
   }},
   "bull_case": ["3-4 tagged, falsifiable bullets"],
   "bear_case": ["3-4 tagged, falsifiable bullets"],

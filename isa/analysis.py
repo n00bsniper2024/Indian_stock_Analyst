@@ -11,7 +11,11 @@ import pandas as pd
 
 from .config import ValuationDefaults
 from .data import StockData, get_batch_prices, get_peer_info, get_stock
+from .classify import classification_for
 from .fundamentals import fundamental_summary
+from .horizons import horizon_ratings
+from .news import for_fact_pack, news_bundle
+from .patterns import breakout_scan
 from .technicals import technical_summary
 from .universe import industries_from_nifty500, load_index
 from .valuation import peer_table, valuation_summary
@@ -89,7 +93,7 @@ def overall_signal(health: int | None, tech: int | None, val: int | None) -> dic
 
 
 def build_fact_pack(symbol: str, settings: ValuationDefaults | None = None, with_peers: bool = True,
-                    sd: StockData | None = None, growth_override: float | None = None) -> dict[str, Any]:
+                    sd: StockData | None = None, growth_override: float | None = None, with_news: bool = True) -> dict[str, Any]:
     sd = sd or get_stock(symbol)
     tech = technical_summary(sd)
     fund = fundamental_summary(sd)
@@ -129,7 +133,33 @@ def build_fact_pack(symbol: str, settings: ValuationDefaults | None = None, with
         "recent_news_headlines": sd.news[:8],
     }
     pack["scores"]["overall_signal"] = overall_signal(fund["health"]["overall"], tech["composite_trend_score"], val.get("valuation_score"))
-    return _json_safe(pack)
+
+    # classification (sector / industry / cap bucket / indices)
+    try:
+        cls = classification_for(sd.symbol)
+    except Exception:
+        cls = {}
+    pack["classification"] = cls
+
+    # support/resistance zones + breakout patterns on 1H, 4H, 1D, 1W
+    pack["breakouts"] = breakout_scan(sd)
+
+    # exchange announcements, results calendar, corporate actions, press headlines
+    if with_news:
+        try:
+            nb = news_bundle(sd.symbol, sd.name)
+            pack["news"] = for_fact_pack(nb)
+            if nb.get("nse_industry"):
+                pack["classification"]["NSE industry"] = nb["nse_industry"]
+        except Exception as exc:
+            pack["news"] = {"fetch_errors": [str(exc)[:150]]}
+    else:
+        pack["news"] = {}
+
+    # horizon-wise ratings (needs everything above)
+    pack = _json_safe(pack)
+    pack["horizon_view"] = _json_safe(horizon_ratings(pack, sd.daily))
+    return pack
 
 
 def fact_pack_json(pack: dict[str, Any], compact: bool = True) -> str:

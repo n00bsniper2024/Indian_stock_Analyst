@@ -37,6 +37,7 @@ CATEGORIES: dict[str, dict[str, str]] = {
         "Nifty Smallcap 250 (Small cap)": "ind_niftysmallcap250list",
         "Nifty Microcap 250 (Micro cap)": "ind_niftymicrocap250_list",
         "Nifty 500 (Broad market)": "ind_nifty500list",
+        "Nifty Total Market (750 stocks)": "ind_niftytotalmarket_list",
     },
     "Sector indices": {
         "Nifty Bank": "ind_niftybanklist",
@@ -92,6 +93,7 @@ def _normalise(df: pd.DataFrame) -> pd.DataFrame:
     if "Industry" not in df.columns:
         df["Industry"] = "Unclassified"
     df["Symbol"] = df["Symbol"].astype(str).str.strip()
+    df = df[~df["Symbol"].str.upper().str.startswith("DUMMY")]  # NSE placeholders for pending index changes
     return df.drop_duplicates("Symbol").reset_index(drop=True)
 
 

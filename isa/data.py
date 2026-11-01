@@ -147,7 +147,7 @@ def _yf_fetch(symbol: str, intraday: bool = True) -> StockData:
     intra = None
     if intraday:
         try:
-            intra = _strip_tz(_retry(lambda: t.history(period="60d", interval="60m", auto_adjust=True)))
+            intra = _strip_tz(_retry(lambda: t.history(period="720d", interval="60m", auto_adjust=True)))
             intra = intra[["Open", "High", "Low", "Close", "Volume"]].dropna(subset=["Close"])
         except Exception:
             warnings.append("Hourly data unavailable; intraday timeframe skipped.")

@@ -148,3 +148,100 @@ def test_app_renders_report_without_errors():
     at.run()
     assert not at.exception, [e.value for e in at.exception]
     assert any("Bull case" in (m.value or "") for m in at.subheader)
+
+
+# ---------------------------------------------------------------- zones, patterns, horizons, news
+from isa import patterns as P  # noqa: E402
+from isa.horizons import HORIZONS, daily_score_series, historical_check, label_for  # noqa: E402
+from isa.news import summarise, tag  # noqa: E402
+
+
+def _bars(closes, start="2025-01-01", spread=0.01, vol=1e6):
+    idx = pd.bdate_range(start, periods=len(closes))
+    c = np.asarray(closes, dtype=float)
+    return pd.DataFrame({"Open": c, "High": c * (1 + spread), "Low": c * (1 - spread), "Close": c, "Volume": vol}, index=idx)
+
+
+def test_zones_sit_on_correct_side_of_price():
+    df = demo_prices("ZONE")
+    z = P.zones(df.iloc[-250:], 5)
+    px = df["Close"].iloc[-1]
+    assert all(s["high"] < px for s in z["supports"]) and all(r["low"] > px for r in z["resistances"])
+    assert all(s["low"] < s["high"] for s in z["supports"] + z["resistances"])
+
+
+def test_range_breakout_detected_with_volume():
+    rng = np.random.default_rng(1)
+    flat = 100 + rng.uniform(-1, 1, 60)
+    closes = np.r_[np.linspace(80, 100, 40), flat, [104, 105.5]]
+    df = _bars(closes, spread=0.004)
+    df.iloc[-2, df.columns.get_loc("Volume")] = 5e6
+    pats = P.consolidation(df, recent=2)
+    assert pats and pats[0]["pattern"] == "Range breakout" and pats[0]["status"] == "breakout confirmed"
+    assert pats[0]["invalidation"] < pats[0]["trigger"] < pats[0]["target"]
+
+
+def test_ascending_triangle_classified():
+    i = np.arange(80)
+    amp = np.linspace(14, 3, 80)                       # swings get smaller...
+    closes = 110 - amp * (1 - np.cos(2 * np.pi * i / 16)) / 2   # ...tops stay at 110, bottoms rise
+    df = _bars(closes, spread=0.002)
+    pats = P.triangles(df, 3)
+    assert pats and pats[0]["pattern"] == "Ascending triangle" and pats[0]["direction"] == "bullish"
+
+
+def test_breakout_scan_shape_demo():
+    res = P.breakout_scan(demo_stock("TCS"))
+    assert set(res) == {"1H", "4H", "1D", "1W"}
+    for tf in res.values():
+        if tf.get("available"):
+            assert tf["breakout_bias"] in ("bullish", "bearish", "neutral")
+            for p in tf["patterns"]:
+                assert {"pattern", "status", "trigger", "target", "invalidation", "direction"} <= set(p)
+
+
+def test_closing_stub_merged():
+    idx = pd.to_datetime(["2026-10-30 14:15", "2026-10-30 15:15", "2026-10-31 09:15"])
+    df = pd.DataFrame({"Open": [1, 2, 3], "High": [2, 5, 4], "Low": [0.5, 1.5, 2.5], "Close": [1.5, 4, 3.5], "Volume": [10, 5, 7]}, index=idx)
+    m = P.merge_closing_stub(df)
+    assert len(m) == 2 and m.iloc[0]["High"] == 5 and m.iloc[0]["Volume"] == 15 and m.iloc[0]["Close"] == 4
+
+
+def test_vectorised_score_matches_scalar():
+    df = demo_prices("VEC")
+    assert daily_score_series(df).iloc[-1] == T.trend_assessment(df, "Daily")["score"]
+
+
+def test_historical_check_fields():
+    h = historical_check(demo_prices("HIST"))
+    assert h["available"]
+    one = h["1 Week"]
+    assert 0 <= one["pct_positive_similar"] <= 100 and one["samples"] >= 30
+
+
+def test_horizon_ratings_complete():
+    pack = build_fact_pack("INFY", with_peers=False)
+    hv = pack["horizon_view"]
+    assert set(hv["horizons"]) == set(HORIZONS)
+    for h in hv["horizons"].values():
+        if h.get("score") is not None:
+            assert h["rating"] == label_for(h["score"]) and h["confidence"] in ("Low", "Medium", "High")
+    assert hv["horizons"]["1 Week"]["confidence"] != "High"  # weekly calls are never high-confidence
+    assert "suggestion" in hv
+
+
+def test_news_tags():
+    assert tag("Company has bagged an order worth Rs 500 crore") == ["Order/contract"]
+    assert tag("in order to comply with Regulation 30") == ["Other"]
+    assert tag("Trading Window closure pursuant to SEBI (PIT)") == ["Routine compliance"]
+    assert tag("informed the Exchange about Certificate under SEBI (Depositories and Participants) Regulations, 2018") == ["Routine compliance"]
+    assert "Promoter / pledge / SAST" in tag("Disclosure of pledge of shares by promoter")
+
+
+def test_news_summary_next_results():
+    from datetime import date, timedelta
+
+    d = date.today() + timedelta(days=6)
+    s = summarise({"announcements": [], "board_meetings": [{"date": str(d), "purpose": "x", "details": "results", "is_results": True}],
+                   "corporate_actions": [], "news": [], "errors": []})
+    assert s["days_to_results"] == 6

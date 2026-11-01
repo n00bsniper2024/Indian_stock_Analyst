@@ -16,9 +16,11 @@ DISCLAIMER = (
 )
 
 SECTIONS = [
+    ("investment_suggestion", "Investment suggestion"), ("horizon_ratings", "Ratings by horizon"),
     ("executive_summary", "Executive summary"), ("business_overview", "Business overview"),
     ("company_health", "Company health"), ("fundamentals", "Fundamentals"), ("valuation", "Valuation"),
-    ("technical", "Technical analysis"), ("bull_case", "Bull case"), ("bear_case", "Bear case"),
+    ("technical", "Technical analysis"), ("levels_and_breakouts", "Levels & breakouts"),
+    ("news_and_results", "News & results"), ("bull_case", "Bull case"), ("bear_case", "Bear case"),
     ("catalysts", "Catalysts"), ("risks", "Risks"), ("what_would_change_my_mind", "What would change the view"),
     ("monitoring_checklist", "Monitoring checklist"), ("data_gaps", "Data gaps"),
 ]

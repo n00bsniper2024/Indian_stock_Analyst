@@ -23,7 +23,10 @@ python -m isa.cli analyze <SYMBOL> --out <SYMBOL>.json
 ```
 Read the JSON. Key blocks: `scores`, `technical.timeframes`, `technical.support_resistance`,
 `fundamentals.annual|quarterly|piotroski|altman_z_em|red_flags|health`, `valuation.multiples|dcf|pe_history|peers|football_field`,
-`meta.warnings`. If the command fails with a rate-limit message, wait and retry once; if the symbol has no data,
+`meta.warnings`, plus `classification` (NSE sector, industry, cap bucket, indices), `breakouts.<1H|4H|1D|1W>`
+(support/resistance zones and patterns with trigger/target/invalidation), `news` (NSE filings, next results date,
+corporate actions, headlines) and `horizon_view` (model rating per horizon 1 Week → Long term, drivers, trade plan,
+and the historical check of how this stock behaved after similar setups). If the command fails with a rate-limit message, wait and retry once; if the symbol has no data,
 say so — never substitute remembered numbers.
 
 ## Step 3 — Fill the gaps the engine cannot see (only if web access is available)
@@ -43,7 +46,11 @@ Cite each with link + date and tag `[DATA]`. If you cannot verify, list it under
    conflict; use only the supplied levels, Fibonacci, regression channel, events, candlestick shapes; give an
    invalidation level (e.g. close below support or 2×ATR). Do not invent chart patterns.
 6. **Bull vs bear** — 3–4 falsifiable points each.
-7. **Catalysts, risks (India lens), what would change the view, quarterly monitoring checklist, data gaps.**
+7. **Horizon ratings** — start from `horizon_view`; move a rating at most one notch with a cited reason;
+   say when the historical check shows no edge; give the plan (entry zone / stop / targets) only if reward/risk ≥ 1.5.
+8. **Levels & breakouts per timeframe** — zones and patterns for 1H, 4H, 1D, 1W with status and invalidation.
+9. **News & results** — material filings first, headlines second; flag conflicting numbers and upcoming results.
+10. **Catalysts, risks (India lens), what would change the view, quarterly monitoring checklist, data gaps.**
 
 ## Step 5 — Visuals
 If the user wants charts and the dashboard is not running, generate them with the engine's Plotly helpers:

@@ -24,6 +24,7 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--no-peers", action="store_true")
     a.add_argument("--out")
     sub.add_parser("categories", help="list available categories")
+    sub.add_parser("refresh-classification", help="rebuild data/classification.csv (sector/industry/cap for ~750 stocks; slow)")
     c = sub.add_parser("category", help="screener snapshot for a category")
     c.add_argument("name")
     c.add_argument("--csv", action="store_true")
@@ -49,6 +50,11 @@ def main(argv: list[str] | None = None) -> int:
             print(f"# {group}")
             for name in cats:
                 print(f"  {name}")
+    elif args.cmd == "refresh-classification":
+        from .classify import build_classification
+
+        df = build_classification(progress=lambda i, n, s: print(f"\r{i}/{n} {s:<15}", end="", file=sys.stderr, flush=True))
+        print(f"\nwrote data/classification.csv with {len(df)} stocks", file=sys.stderr)
     elif args.cmd == "category":
         from .data import get_batch_prices
         from .overview import breadth, category_snapshot

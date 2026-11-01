@@ -32,7 +32,7 @@ def qa_messages(pack: dict[str, Any], history: list[dict[str, str]], report: dic
 
 
 def generate_report(pack: dict[str, Any], provider: str, api_key: str, model: str, base_url: str | None = None) -> dict[str, Any]:
-    raw = chat(provider, api_key, model, report_messages(pack), json_mode=True, temperature=0.2, max_tokens=7000, base_url=base_url)
+    raw = chat(provider, api_key, model, report_messages(pack), json_mode=True, temperature=0.2, max_tokens=10000, base_url=base_url)
     try:
         report = parse_json(raw)
     except Exception:

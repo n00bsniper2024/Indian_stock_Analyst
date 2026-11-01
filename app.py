@@ -23,6 +23,10 @@ from isa.fundamentals import annual_table, quarterly_table
 from isa.llm import PROVIDERS, LLMError, default_key, list_models, stream_chat
 from isa.overview import breadth, category_snapshot
 from isa.report import DISCLAIMER, to_html, to_markdown
+from isa.classify import load_classification
+from isa.horizons import FACTOR_LABELS
+from isa.news import news_bundle
+from isa.patterns import frames as tf_frames
 from isa.universe import CATEGORIES, flat_categories, industries_from_nifty500, load_all_equities, load_index
 from isa.valuation import pe_band, peer_table, valuation_summary
 
@@ -124,12 +128,12 @@ def fmt(v, suffix: str = "", nd: int = 1, prefix: str = "") -> str:
 
 
 # --------------------------------------------------------------------------- sidebar
-VIEWS = ["🔎 Stock analysis", "🗺️ Market overview"]
+VIEWS = ["🔎 Stock analysis", "🗺️ Market overview", "📚 Stock universe"]
 with st.sidebar:
     st.markdown("## 📈 Indian Stock Analyst")
     if DEMO_MODE:
         st.warning("DEMO MODE — synthetic data. Unset ISA_DEMO to use live market data.")
-    view = st.radio("View", VIEWS, horizontal=True, label_visibility="collapsed", key="view")
+    view = st.radio("View", VIEWS, label_visibility="collapsed", key="view")
 
     st.markdown("### 🤖 AI engine")
     provider = st.selectbox("Provider", list(PROVIDERS), index=0, help="DeepSeek is cheapest; Gemini has a free tier; Claude is strongest at careful financial reasoning; Ollama runs locally for free.")
@@ -171,17 +175,89 @@ with st.sidebar:
 
 
 # --------------------------------------------------------------------------- category picker
+@st.cache_data(ttl=24 * 3600, show_spinner=False)
+def cached_classification() -> pd.DataFrame:
+    return load_classification().copy()
+
+
+CLASS_GROUPS = {"Sector (NSE)": "Sector", "Industry": "Industry", "Market-cap bucket": "Cap bucket"}
+
+
 def category_picker(key: str) -> tuple[str, pd.DataFrame, str]:
-    groups = list(CATEGORIES) + ["Industry (NSE classification)"]
-    c1, c2 = st.columns([1, 2])
-    group = c1.selectbox("Category type", groups, key=f"{key}_grp")
-    if group == "Industry (NSE classification)":
-        inds = cached_industries()
-        name = c2.selectbox("Industry", sorted(inds), key=f"{key}_ind")
-        return name, inds[name], "cache"
+    """Browse by index (market cap, sector indices, themes) or by classification (sector, industry, cap bucket)."""
+    groups = list(CATEGORIES) + list(CLASS_GROUPS)
+    c1, c2, c3 = st.columns([1, 2, 1])
+    group = c1.selectbox("Browse by", groups, key=f"{key}_grp")
+    if group in CLASS_GROUPS:
+        cls = cached_classification()
+        col = CLASS_GROUPS[group]
+        if group == "Industry":
+            sector = c3.selectbox("Within sector", ["All sectors"] + sorted(cls["Sector"].dropna().unique()), key=f"{key}_sec")
+            if sector != "All sectors":
+                cls = cls[cls["Sector"] == sector]
+        counts = cls[col].value_counts()
+        order = ["Large cap", "Mid cap", "Small cap", "Micro cap", "Unclassified"] if col == "Cap bucket" else sorted(counts.index)
+        opts = [o for o in order if o in counts.index]
+        name = c2.selectbox(group, opts, format_func=lambda o: f"{o} ({counts[o]})", key=f"{key}_{col}")
+        sub = cls[cls[col] == name]
+        grouping = "Industry" if col == "Sector" else "Sector"
+        meta = pd.DataFrame({"Symbol": sub["Symbol"], "Company Name": sub["Company"], "Industry": sub[grouping]}).reset_index(drop=True)
+        return name, meta, "classification"
     name = c2.selectbox("Category", list(CATEGORIES[group]), key=f"{key}_cat")
     df, src = cached_index(flat_categories()[name])
     return name, df, src
+
+
+def with_classification(snap: pd.DataFrame) -> pd.DataFrame:
+    cls = cached_classification()[["Symbol", "Sector", "Industry", "Cap bucket"]].rename(columns={"Industry": "Industry (detail)"})
+    out = snap.merge(cls, on="Symbol", how="left")
+    front = ["Symbol", "Company", "Sector", "Industry (detail)", "Cap bucket"]
+    return out[[c for c in front if c in out] + [c for c in out.columns if c not in front and c != "Industry"]]
+
+
+# =========================================================================== UNIVERSE
+def universe_view() -> None:
+    st.title("📚 Stock universe")
+    st.caption("Every stock in the Nifty Total Market (~750: large, mid, small and micro caps) with NSE sector, finer industry, "
+               "market-cap bucket and index memberships. Filter, then select a row to analyse it.")
+    cls = cached_classification()
+    c1, c2, c3, c4 = st.columns(4)
+    sectors = c1.multiselect("Sector", sorted(cls["Sector"].dropna().unique()))
+    pool = cls[cls["Sector"].isin(sectors)] if sectors else cls
+    inds = c2.multiselect("Industry", sorted(pool["Industry"].dropna().unique()))
+    caps = c3.multiselect("Market cap", ["Large cap", "Mid cap", "Small cap", "Micro cap"])
+    idx_q = c4.text_input("Index contains", placeholder="e.g. Nifty IT, Defence")
+    f = pool
+    if inds:
+        f = f[f["Industry"].isin(inds)]
+    if caps:
+        f = f[f["Cap bucket"].isin(caps)]
+    if idx_q:
+        f = f[f["Indices"].str.contains(idx_q, case=False, na=False)]
+    m = st.columns(5)
+    m[0].metric("Stocks", len(f))
+    for i, cap in enumerate(["Large cap", "Mid cap", "Small cap", "Micro cap"]):
+        m[i + 1].metric(cap, int((f["Cap bucket"] == cap).sum()))
+    if len(f):
+        tm = f.copy()
+        tm["size"] = pd.to_numeric(tm["Market cap (₹ cr)"], errors="coerce").fillna(1000).clip(lower=100)
+        import plotly.express as px
+
+        fig = px.treemap(tm, path=[px.Constant("All"), "Sector", "Industry", "Symbol"], values="size", color="Cap bucket",
+                         color_discrete_map={"Large cap": charts.S[0], "Mid cap": charts.S[2], "Small cap": charts.S[3],
+                                             "Micro cap": charts.S[4], "Unclassified": charts.NEUTRAL, "(?)": charts.PANEL})
+        fig.update_traces(marker=dict(line=dict(color=charts.SURFACE, width=1)), hovertemplate="%{label}<br>₹%{value:,.0f} cr<extra></extra>")
+        charts._layout(fig, "Sector → industry → stock (size = market cap, colour = cap bucket)", height=560)
+        fig.update_layout(margin=dict(l=4, r=4, t=48, b=4))
+        st.plotly_chart(fig, width="stretch")
+    ev = st.dataframe(f, hide_index=True, width="stretch", height=480, on_select="rerun", selection_mode="single-row",
+                      column_config={"Market cap (₹ cr)": st.column_config.NumberColumn(format="%,.0f")})
+    rows = ev.selection.rows if ev and hasattr(ev, "selection") else []
+    if rows:
+        sym = f.iloc[rows[0]]["Symbol"]
+        st.button(f"🔎 Analyse {sym}", type="primary", on_click=lambda s=sym: st.session_state.update(symbol=s, view=VIEWS[0]))
+    st.caption("Cap buckets follow index membership (Nifty 100 / Midcap 150 / Smallcap 250 / Microcap 250), which mirrors "
+               "SEBI-AMFI market-cap ranks. Industry detail is from Yahoo; refresh with `python -m isa.cli refresh-classification`.")
 
 
 # =========================================================================== MARKET OVERVIEW
@@ -197,6 +273,8 @@ def market_overview() -> None:
             st.error(f"Price download failed: {e}")
             return
     snap = category_snapshot(prices, meta)
+    if not snap.empty:
+        snap = with_classification(snap)
     if snap.empty:
         st.error("No price data returned. Yahoo may be rate-limiting — wait a minute and press Refresh.")
         return
@@ -273,6 +351,21 @@ def render_report(report: dict, pack: dict, figs: list) -> None:
             st.warning(msg + " Not found in data (treat with suspicion): " + ", ".join(a["unverified"][:12]))
         else:
             st.success(msg)
+    sug = report.get("investment_suggestion") or {}
+    if sug:
+        st.subheader(f"💡 Suggestion — best horizon: {sug.get('best_horizon', '—')}")
+        st.markdown(tag_badges(sug.get("summary", "")))
+        if sug.get("avoid_if"):
+            st.markdown(f"**Doesn't apply if:** {tag_badges(sug['avoid_if'])}")
+    hr = report.get("horizon_ratings") or []
+    if hr:
+        st.subheader("🎯 Ratings by horizon (model vs AI)")
+        st.dataframe(pd.DataFrame([{"Horizon": h.get("horizon"), "Model": h.get("model_rating"), "AI": h.get("ai_rating"),
+                                    "Conviction": h.get("conviction"), "Why": h.get("rationale"), "Plan": h.get("plan")} for h in hr]),
+                     hide_index=True, width="stretch")
+        changed = [h for h in hr if h.get("model_rating") and h.get("ai_rating") and h["model_rating"] != h["ai_rating"]]
+        if changed:
+            st.caption("The AI changed the model rating for: " + ", ".join(h["horizon"] for h in changed) + " — see 'Why'.")
     st.subheader("Executive summary")
     bullets(report.get("executive_summary"))
     st.markdown(f"**Business:** {report.get('business_overview', '—')}")
@@ -306,6 +399,20 @@ def render_report(report: dict, pack: dict, figs: list) -> None:
     kl = t.get("key_levels", {})
     st.markdown(f"**Support:** {' · '.join(kl.get('support', [])) or '—'}  \n**Resistance:** {' · '.join(kl.get('resistance', [])) or '—'}  \n**Invalidation:** {t.get('invalidation', '—')}")
     bullets(t.get("chart_observations"))
+    lb = report.get("levels_and_breakouts") or []
+    if lb:
+        st.subheader("🧱 Levels & breakouts (AI read)")
+        for t in lb:
+            st.markdown(f"**{t.get('timeframe')}** — support {' · '.join(t.get('support_zones', [])) or '—'} | resistance "
+                        f"{' · '.join(t.get('resistance_zones', [])) or '—'}  \n" + (f"Patterns: {'; '.join(t.get('patterns', []))}  \n" if t.get("patterns") else "")
+                        + tag_badges(t.get("read", "")))
+    nr = report.get("news_and_results") or {}
+    if nr:
+        st.subheader(f"📰 News & results — sentiment: {nr.get('news_sentiment', '—')}")
+        st.markdown(f"**Latest results:** {tag_badges(nr.get('latest_results', '—'))}")
+        bullets(nr.get("key_announcements"), "No material announcements")
+        if nr.get("upcoming_events"):
+            st.markdown("**Upcoming:** " + "; ".join(nr["upcoming_events"]))
     c1, c2 = st.columns(2)
     with c1:
         st.subheader("🐂 Bull case")
@@ -347,7 +454,13 @@ def stock_analysis() -> None:
     perf = tech["performance"]
 
     st.markdown(f"## {meta['company']}  ·  `{meta['exchange_symbol']}`")
-    st.caption(f"{meta.get('sector') or '—'} › {meta.get('industry') or '—'} · prices as of {meta['price_as_of']} · {meta['data_source']}")
+    cl = pack.get("classification") or {}
+    chips = [f":blue-badge[{cl['Sector']}]" if cl.get("Sector") else "",
+             f":violet-badge[{cl.get('Industry')}]" if cl.get("Industry") and cl.get("Industry") != cl.get("Sector") else "",
+             f":gray-badge[NSE: {cl['NSE industry']}]" if cl.get("NSE industry") else "",
+             f":orange-badge[{cl['Cap bucket']}]" if cl.get("Cap bucket") and cl.get("Cap bucket") != "Unclassified" else ""]
+    st.markdown(" ".join(c for c in chips if c) or f"{meta.get('sector') or '—'} › {meta.get('industry') or '—'}")
+    st.caption((f"Indices: {cl['Indices']} · " if cl.get("Indices") else "") + f"prices as of {meta['price_as_of']} · {meta['data_source']}")
     for w in meta.get("warnings", []):
         st.warning(w)
     m = st.columns(6)
@@ -365,12 +478,27 @@ def stock_analysis() -> None:
     g[2].plotly_chart(charts.gauge(sc["valuation_0_100_higher_is_cheaper"], "Valuation (higher = cheaper)"), width="stretch")
     g[3].plotly_chart(charts.gauge(sc["technical_trend_minus100_100"], "Technical trend", -100, 100), width="stretch")
 
-    tabs = st.tabs(["📊 Summary", "📈 Technical", "🏦 Fundamentals", "💰 Valuation", "👥 Peers", "🤖 AI report", "💬 Ask AI", "🧾 Data"])
+    hv = pack.get("horizon_view") or {}
+    hz = hv.get("horizons", {})
+    if hz:
+        st.markdown("### 🎯 Rating by investment horizon")
+        cols = st.columns(len(hz))
+        icon = {"Strong Buy": "🟢", "Buy": "🟢", "Neutral": "⚪", "Sell": "🟠", "Strong Sell": "🔴"}
+        for col, (hname, h) in zip(cols, hz.items()):
+            col.markdown(f"<div class='card' style='text-align:center'><span style='color:#a3a29a;font-size:.85rem'>{hname}</span><br>"
+                         f"<b style='font-size:1.15rem'>{icon.get(h['rating'], '⚪')} {h['rating']}</b><br>"
+                         f"<span style='color:#a3a29a;font-size:.8rem'>score {h.get('score', '—')} · {h.get('confidence', '—')} confidence</span></div>",
+                         unsafe_allow_html=True)
+        st.info(f"**{hv.get('suggestion', '')}** {hv.get('disclaimer', '')}")
+
+    names = ["📊 Summary", "🎯 Horizons & plan", "🧱 Levels & breakouts", "📈 Technical", "🏦 Fundamentals", "💰 Valuation",
+             "📰 News & results", "👥 Peers", "🤖 AI report", "💬 Ask AI", "🧾 Data"]
+    T = dict(zip(names, st.tabs(names)))
     t_annual = annual_table(sd)
     figs_for_report: list = []
 
     # ---------------- summary
-    with tabs[0]:
+    with T["📊 Summary"]:
         c1, c2 = st.columns(2)
         comps = {k: v["score"] for k, v in fund["health"]["components"].items()}
         rfig = charts.radar(comps, "Fundamental health profile")
@@ -399,7 +527,7 @@ def stock_analysis() -> None:
                 st.write(meta["business_summary"])
 
     # ---------------- technical
-    with tabs[1]:
+    with T["📈 Technical"]:
         tf_opts = ["Daily", "Weekly", "Monthly"] + (["1 Hour", "4 Hour"] if sd.intraday is not None and len(sd.intraday) > 30 else [])
         c1, c2 = st.columns([1, 3])
         tf = c1.radio("Timeframe", tf_opts, horizontal=False)
@@ -438,7 +566,7 @@ def stock_analysis() -> None:
             st.markdown(", ".join(tech["candlestick_last_bar"]) or "No notable single-bar pattern")
 
     # ---------------- fundamentals
-    with tabs[2]:
+    with T["🏦 Fundamentals"]:
         if t_annual.empty:
             st.info("No annual statements available from Yahoo for this stock.")
         else:
@@ -491,7 +619,7 @@ def stock_analysis() -> None:
         st.caption("Data gaps: " + " ".join(fund["data_gaps"]))
 
     # ---------------- valuation
-    with tabs[3]:
+    with T["💰 Valuation"]:
         mu = val["multiples"]
         m = st.columns(6)
         m[0].metric("P/E", fmt(mu.get("pe_ttm_or_latest_fy"), "x"))
@@ -538,8 +666,141 @@ def stock_analysis() -> None:
             s = val["street_targets_yahoo"]
             st.caption(f"Street targets (Yahoo, {s.get('analysts')} analysts): low ₹{s['targetLowPrice']:,.0f} · mean ₹{s['targetMeanPrice']:,.0f} · high ₹{s['targetHighPrice']:,.0f}")
 
+    # ---------------- horizons & plan
+    with T["🎯 Horizons & plan"]:
+        if not hz:
+            st.info("Horizon ratings unavailable.")
+        else:
+            c1, c2 = st.columns(2)
+            hb = charts.horizon_bars(hz)
+            c1.plotly_chart(hb, width="stretch")
+            hist = {n: h.get("historical", {}) for n, h in hz.items()}
+            if any(isinstance(v, dict) and v.get("available") for v in hist.values()):
+                c2.plotly_chart(charts.history_compare(hist), width="stretch")
+                c2.caption(hv.get("historical_check", {}).get("method", ""))
+            figs_for_report.append(hb)
+            for hname, h in hz.items():
+                if h.get("score") is None:
+                    continue
+                with st.expander(f"{hname} — {h['rating']} (score {h['score']}, {h['confidence']} confidence)", expanded=hname == hv.get("best_horizon")):
+                    for n_ in h.get("notes", []):
+                        st.warning(n_)
+                    a, b = st.columns([3, 2])
+                    a.markdown("**What drives this rating**")
+                    a.dataframe(pd.DataFrame(h["drivers"]).rename(columns=str.capitalize), hide_index=True, width="stretch",
+                                column_config={"Score": st.column_config.ProgressColumn(min_value=0, max_value=100, format="%d"),
+                                               "Weight": st.column_config.NumberColumn(format="%.2f")})
+                    hh = h.get("historical", {})
+                    if hh.get("available"):
+                        b.markdown("**Past behaviour after similar setups**")
+                        b.markdown(f"Up **{hh['pct_positive_similar']}%** of the time (vs {hh['pct_positive_all_days']}% on all days) · "
+                                   f"median {hh['median_return_similar_pct']:+.1f}% · worst-10% {hh['worst_10pct_similar_pct']:+.1f}% · "
+                                   f"{hh['samples']} samples")
+                        edge = hh["edge_pp"]
+                        b.caption("✅ setup has had an edge" if edge >= 5 else "⚠️ setup has been a worse-than-average signal" if edge <= -5
+                                  else "➖ no meaningful edge — treat the technical part of this rating with caution")
+                    pl = h.get("plan")
+                    if pl:
+                        b.markdown(f"**Trade plan ({pl['timeframe_used']} levels)**  \n"
+                                   f"Entry ₹{pl['entry_zone'][0]:,.0f}–{pl['entry_zone'][1]:,.0f} ({pl['entry_basis']})  \n"
+                                   f"Stop ₹{pl['stop_loss']:,.0f} ({pl['stop_pct']:+.1f}%) · Targets " + " / ".join(f"₹{t:,.0f}" for t in pl["targets"])
+                                   + (f"  \nReward/risk to T1: **{pl['reward_risk_t1']}×**" if pl.get("reward_risk_t1") else ""))
+                        (b.success if pl.get("attractive") else b.warning)(pl["note"])
+
+    # ---------------- levels & breakouts
+    with T["🧱 Levels & breakouts"]:
+        brk = pack.get("breakouts", {})
+        fr = tf_frames(sd)
+        avail = [k for k in ("1H", "4H", "1D", "1W") if brk.get(k, {}).get("available")]
+        if not avail:
+            st.info("Not enough price history for zone analysis.")
+        else:
+            st.caption("Zones are price bands built from repeated swing highs/lows (thicker = more touches, recent = stronger). "
+                       "Patterns show status, trigger, measured-move target and the level that invalidates them.")
+            summ = [{"Timeframe": brk[k]["timeframe"], "Bias": brk[k]["breakout_bias"],
+                     "Nearest support": (f"₹{brk[k]['zones']['supports'][0]['low']:,.0f}–{brk[k]['zones']['supports'][0]['high']:,.0f}" if brk[k]["zones"].get("supports") else "—"),
+                     "Nearest resistance": (f"₹{brk[k]['zones']['resistances'][0]['low']:,.0f}–{brk[k]['zones']['resistances'][0]['high']:,.0f}" if brk[k]["zones"].get("resistances") else "—"),
+                     "Patterns": "; ".join(f"{p['pattern']} ({p['status']})" for p in brk[k]["patterns"]) or "none"} for k in avail]
+            st.dataframe(pd.DataFrame(summ), hide_index=True, width="stretch")
+            ktf = st.segmented_control("Timeframe", avail, default="1D" if "1D" in avail else avail[0], key=f"brk_tf_{symbol}") or avail[0]
+            t_ = brk[ktf]
+            nbars = st.slider("Bars shown", 60, 400, {"1H": 160, "4H": 140, "1D": 180, "1W": 156}[ktf], 10, key=f"brk_bars_{symbol}_{ktf}")
+            zf = charts.zones_chart(fr[ktf], t_, f"{symbol} · {t_['timeframe']} — zones & patterns", intraday=ktf in ("1H", "4H"), bars=nbars)
+            st.plotly_chart(zf, width="stretch")
+            if ktf == "1D":
+                figs_for_report.append(zf)
+            c1, c2 = st.columns(2)
+            zrows = [{"Type": "Resistance", "Zone ₹": f"{z['low']:,.2f} – {z['high']:,.2f}", "Touches": z["touches"], "Distance %": z["distance_pct"], "Last touch": z["last_touch"]}
+                     for z in t_["zones"].get("resistances", [])[::-1]]
+            if t_["zones"].get("inside"):
+                zi = t_["zones"]["inside"]
+                zrows.append({"Type": "Price inside", "Zone ₹": f"{zi['low']:,.2f} – {zi['high']:,.2f}", "Touches": zi["touches"], "Distance %": 0.0, "Last touch": zi["last_touch"]})
+            zrows += [{"Type": "Support", "Zone ₹": f"{z['low']:,.2f} – {z['high']:,.2f}", "Touches": z["touches"], "Distance %": z["distance_pct"], "Last touch": z["last_touch"]}
+                      for z in t_["zones"].get("supports", [])]
+            c1.markdown("**Zones**")
+            c1.dataframe(pd.DataFrame(zrows), hide_index=True, width="stretch")
+            c2.markdown("**Patterns**")
+            if t_["patterns"]:
+                prow = [{"Pattern": p["pattern"], "Direction": p["direction"], "Status": p["status"], "Trigger ₹": p["trigger"],
+                         "Target ₹": p["target"], "Invalidation ₹": p["invalidation"], "Note": p["note"]} for p in t_["patterns"]]
+                c2.dataframe(pd.DataFrame(prow), hide_index=True, width="stretch")
+            else:
+                c2.caption("No pattern detected on this timeframe right now.")
+
+    # ---------------- news & results
+    with T["📰 News & results"]:
+        try:
+            nb = news_bundle(symbol, meta["company"])
+        except Exception as e:
+            nb = None
+            st.error(f"News unavailable: {e}")
+        if nb:
+            for e_ in nb.get("errors", []):
+                st.caption(f"⚠️ Could not fetch: {e_} (NSE sometimes blocks cloud servers; it usually works from a home/office connection)")
+            m = st.columns(4)
+            m[0].metric("Next results", nb.get("next_results_date") or "not announced",
+                        f"in {nb['days_to_results']} days" if nb.get("days_to_results") is not None else None, delta_color="off")
+            ht = nb.get("headline_tone", {})
+            m[1].metric("Headlines (30 days)", len(nb.get("news", [])), f"{ht.get('positive', 0)} + / {ht.get('negative', 0)} −", delta_color="off")
+            m[2].metric("Exchange filings (120 days)", len(nb.get("announcements", [])))
+            uca = nb.get("upcoming_corporate_actions", [])
+            m[3].metric("Upcoming corporate action", uca[0]["action"][:28] if uca else "none", uca[0]["ex_date"] if uca else None, delta_color="off")
+            if nb.get("attention_items"):
+                st.markdown("#### ⚠️ Filings that deserve attention")
+                for a in nb["attention_items"]:
+                    st.markdown(f"- `{a['date'][:10]}` **{', '.join(a['tags'])}** — {a['text'][:220]}" + (f" [PDF]({a['link']})" if a.get("link") else ""))
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown("#### 🏛️ Exchange announcements (NSE)")
+                tags_all = sorted({t for a in nb.get("announcements", []) for t in a["tags"]})
+                pick = st.multiselect("Filter by type", tags_all, default=[t for t in tags_all if t not in ("Other", "Routine compliance")], key=f"ann_{symbol}")
+                for a in [a for a in nb.get("announcements", []) if set(a["tags"]) & set(pick)][:25]:
+                    st.markdown(f"- `{a['date'][:10]}` *{', '.join(a['tags'])}* — {a['text'][:200]}" + (f" [PDF]({a['link']})" if a.get("link") else ""))
+            with c2:
+                st.markdown("#### 📰 Press headlines (Google News, India)")
+                for n in nb.get("news", [])[:20]:
+                    t_icon = "🟢" if n["tone"] > 0 else "🔴" if n["tone"] < 0 else "⚪"
+                    st.markdown(f"- {t_icon} `{n['date']}` [{n['title']}]({n['link']}) — *{n['source']}*")
+                st.caption("Tone dots are a rough keyword count. Headlines from aggregators often disagree on numbers — trust exchange filings first.")
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown("#### 📅 Board meetings")
+                st.dataframe(pd.DataFrame(nb.get("board_meetings", [])[:8]), hide_index=True, width="stretch")
+            with c2:
+                st.markdown("#### 💸 Corporate actions")
+                st.dataframe(pd.DataFrame(nb.get("corporate_actions", [])[:8]), hide_index=True, width="stretch")
+            qt2 = quarterly_table(sd)
+            if not qt2.empty:
+                st.markdown("#### 📊 Latest quarterly results (₹ crore)")
+                q2 = qt2.copy()
+                for c in ("Revenue", "Operating profit", "Net profit"):
+                    if c in q2:
+                        q2[c] = q2[c] / 1e7
+                st.dataframe(q2.T.style.format(lambda v: "—" if pd.isna(v) else f"{v:,.1f}"), width="stretch")
+                st.caption("Quarterly numbers from Yahoo (it sometimes skips a quarter); growth is compared with the same quarter a year earlier by date.")
+
     # ---------------- peers
-    with tabs[4]:
+    with T["👥 Peers"]:
         peers = pd.DataFrame(pack.get("peers") or [])
         if peers.empty:
             st.info("No peers loaded. Enable 'Fetch peer comparison' in the sidebar (uses NSE's industry classification from the Nifty 500).")
@@ -554,7 +815,7 @@ def stock_analysis() -> None:
 
     # ---------------- AI report
     rkey = f"report::{symbol}::{provider}::{model}"
-    with tabs[5]:
+    with T["🤖 AI report"]:
         st.caption("The AI receives only the computed fact pack (see the Data tab) and must tag every claim as "
                    "[DATA], [INFERENCE] or [ASSUMPTION]. A number audit then checks its figures against the data.")
         c1, c2 = st.columns([1, 3])
@@ -573,7 +834,7 @@ def stock_analysis() -> None:
             render_report(st.session_state[rkey], pack, figs_for_report)
 
     # ---------------- Ask AI
-    with tabs[6]:
+    with T["💬 Ask AI"]:
         hkey = f"chat::{symbol}"
         hist = st.session_state.setdefault(hkey, [])
         for msg in hist:
@@ -590,7 +851,7 @@ def stock_analysis() -> None:
                     st.error(str(e))
 
     # ---------------- raw data
-    with tabs[7]:
+    with T["🧾 Data"]:
         st.caption("This is exactly what the AI sees. Every chart and score is computed from it in Python.")
         st.download_button("⬇️ Fact pack (JSON)", fact_pack_json(pack, compact=False), file_name=f"{symbol}_fact_pack.json", mime="application/json")
         st.json(pack, expanded=False)
@@ -602,5 +863,7 @@ def stock_analysis() -> None:
 
 if view == VIEWS[0]:
     stock_analysis()
-else:
+elif view == VIEWS[1]:
     market_overview()
+else:
+    universe_view()
