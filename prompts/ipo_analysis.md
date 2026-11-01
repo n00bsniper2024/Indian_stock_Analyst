@@ -23,27 +23,33 @@ Verdict vocabulary (exactly one per horizon):
 - short_term: "Hold after listing" | "Wait and watch" | "Avoid"
 - long_term: "Good long-term candidate" | "Wait for a better price" | "Avoid"
 
+LENGTH BUDGET (strict — longer answers get cut off and are lost):
+- Every list: at most 4 bullets. Every bullet: one claim, at most 30 words, starting with its tag.
+- No paragraphs: everything except one_liner and verdicts is a list of short tagged bullets.
+- Whole answer: under 1,200 words.
+
 Return ONE JSON object:
 {{
-  "one_liner": "<= 30 words: the essence of this IPO",
-  "company_position": "tagged paragraph: what the company does, market position, scale vs peers, competitive edge",
-  "fundamentals": {{
-    "growth": "tagged", "profitability": "tagged", "balance_sheet": "tagged", "cash_flows": "tagged",
-    "assessment": "Strong | Decent | Average | Weak | Not enough data"
+  "one_liner": "<= 30 words: the essence of this IPO (no tag)",
+  "suggestions": {{
+    "listing_gains": {{"verdict": "...", "confidence": "Low | Medium | High", "reasons": ["2-3 tagged bullets"]}},
+    "short_term": {{"verdict": "...", "confidence": "Low | Medium | High", "reasons": ["2-3 tagged bullets"]}},
+    "long_term": {{"verdict": "...", "confidence": "Low | Medium | High", "reasons": ["2-3 tagged bullets"]}}
   }},
-  "valuation": {{"summary": "tagged: P/E, market cap/sales, vs peers", "assessment": "Cheap | Fair | Expensive | Not determinable"}},
-  "issue_structure": "tagged: fresh vs OFS, use of proceeds, promoter holding before/after, lead managers",
-  "demand": "tagged: read of subscription by category and what it signals",
+  "company_position": ["what it does, market position, scale vs peers, competitive edge — tagged bullets"],
+  "fundamentals": {{
+    "assessment": "Strong | Decent | Average | Weak | Not enough data",
+    "growth": ["tagged bullets"], "profitability": ["tagged bullets"],
+    "balance_sheet": ["tagged bullets"], "cash_flows": ["tagged bullets"]
+  }},
+  "valuation": {{"assessment": "Cheap | Fair | Expensive | Not determinable", "points": ["P/E, market cap/sales, vs peers — tagged bullets"]}},
+  "issue_structure": ["fresh vs OFS, use of proceeds, promoter holding, lead managers — tagged bullets"],
+  "demand": ["subscription by category and what it signals — tagged bullets"],
   "strengths": ["tagged bullets"],
   "risks": ["tagged bullets — company-specific, India-specific"],
   "red_flags": ["tagged bullets, or empty list"],
-  "suggestions": {{
-    "listing_gains": {{"verdict": "...", "confidence": "Low | Medium | High", "reason": "2-3 tagged sentences"}},
-    "short_term": {{"verdict": "...", "confidence": "Low | Medium | High", "reason": "2-3 tagged sentences"}},
-    "long_term": {{"verdict": "...", "confidence": "Low | Medium | High", "reason": "2-3 tagged sentences"}}
-  }},
-  "what_to_check_before_applying": ["final-day subscription numbers, specific RHP sections, etc."],
-  "data_gaps": ["what is missing that matters"]
+  "what_to_check_before_applying": ["short bullets"],
+  "data_gaps": ["short bullets"]
 }}
 
 IPO FACT PACK (JSON):

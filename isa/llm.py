@@ -106,8 +106,20 @@ def _short(exc: Exception) -> str:
     return msg[:400]
 
 
+class LLMText(str):
+    """Model output; `.truncated` is True when the model hit its output limit (answer cut off)."""
+
+    truncated: bool = False
+
+
+def _text(content: str, truncated: bool) -> LLMText:
+    t = LLMText(content or "")
+    t.truncated = truncated
+    return t
+
+
 def chat(provider: str, api_key: str, model: str, messages: list[dict[str, str]], *, json_mode: bool = False,
-         temperature: float = 0.2, max_tokens: int = 6000, base_url: str | None = None) -> str:
+         temperature: float = 0.2, max_tokens: int = 6000, base_url: str | None = None) -> LLMText:
     p = PROVIDERS[provider]
     if p.env_key and not api_key and p.name != "Custom (OpenAI-compatible)":
         raise LLMError(f"No API key for {provider}. Paste one in the sidebar or set {p.env_key} in .env.")
@@ -121,22 +133,27 @@ def chat(provider: str, api_key: str, model: str, messages: list[dict[str, str]]
             if json_mode:  # newer Claude models don't allow assistant prefill; ask explicitly instead
                 system += "\n\nRespond with a single valid JSON object only — no prose, no code fences."
             r = client.messages.create(model=model, system=system, messages=convo, max_tokens=max_tokens, temperature=temperature)
-            return "".join(b.text for b in r.content if getattr(b, "type", "") == "text")
+            return _text("".join(b.text for b in r.content if getattr(b, "type", "") == "text"), r.stop_reason == "max_tokens")
         client = _openai_client(p, api_key, base_url)
         kwargs: dict[str, Any] = {"model": model, "messages": messages, "temperature": temperature, "max_tokens": max_tokens}
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
         try:
             r = client.chat.completions.create(**kwargs)
-        except Exception as exc:  # some models reject response_format / temperature — retry plainly
-            if any(s in str(exc).lower() for s in ("response_format", "temperature", "unsupported", "max_tokens")):
-                kwargs.pop("response_format", None)
+        except Exception as exc:
+            msg = str(exc).lower()
+            if "max_tokens" in msg and any(w in msg for w in ("too large", "maximum", "exceed", "range", "must be")):
+                kwargs["max_tokens"] = min(max_tokens, 8192)  # model has a smaller output cap
+                r = client.chat.completions.create(**kwargs)
+            elif any(w in msg for w in ("response_format", "temperature", "unsupported", "max_tokens")):
+                kwargs.pop("response_format", None)  # some models reject these options — retry plainly
                 kwargs.pop("temperature", None)
                 kwargs["max_completion_tokens"] = kwargs.pop("max_tokens")
                 r = client.chat.completions.create(**kwargs)
             else:
                 raise
-        return r.choices[0].message.content or ""
+        ch = r.choices[0]
+        return _text(ch.message.content or "", getattr(ch, "finish_reason", None) == "length")
     except LLMError:
         raise
     except Exception as exc:
@@ -166,8 +183,52 @@ def stream_chat(provider: str, api_key: str, model: str, messages: list[dict[str
         raise LLMError(f"{provider} request failed: {_short(exc)}") from exc
 
 
+def _repair_truncated(t: str) -> str:
+    """Close a JSON object that was cut off mid-way: drop the unfinished last item, then close brackets."""
+    stack, in_str, esc, last_safe = [], False, False, 0
+    for i, ch in enumerate(t):
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch in "{[":
+            stack.append("}" if ch == "{" else "]")
+        elif ch in "}]":
+            if stack:
+                stack.pop()
+            last_safe = i + 1
+        elif ch == ",":
+            last_safe = i  # everything before this comma is a complete item
+    head = t[:last_safe].rstrip().rstrip(",")
+    # recompute the open brackets for the trimmed text
+    stack, in_str, esc = [], False, False
+    for ch in head:
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch in "{[":
+            stack.append("}" if ch == "{" else "]")
+        elif ch in "}]" and stack:
+            stack.pop()
+    return head + "".join(reversed(stack))
+
+
 def parse_json(text: str) -> dict[str, Any]:
-    """Tolerant JSON extraction: strips <think> blocks and ``` fences, then takes the outermost object."""
+    """Tolerant JSON extraction: strips <think> blocks and ``` fences, takes the outermost object,
+    and as a last resort repairs an answer that was cut off (marks it with `_truncated`)."""
     t = re.sub(r"<think>.*?</think>", "", text, flags=re.S).strip()
     t = re.sub(r"^```(?:json)?|```$", "", t.strip(), flags=re.M).strip()
     try:
@@ -175,5 +236,31 @@ def parse_json(text: str) -> dict[str, Any]:
     except json.JSONDecodeError:
         start, end = t.find("{"), t.rfind("}")
         if start >= 0 and end > start:
-            return json.loads(t[start : end + 1])
+            try:
+                return json.loads(t[start : end + 1])
+            except json.JSONDecodeError:
+                pass
+        if start >= 0:
+            fixed = json.loads(_repair_truncated(t[start:]))
+            if isinstance(fixed, dict):
+                fixed["_truncated"] = True
+                return fixed
         raise
+
+
+def chat_json(provider: str, api_key: str, model: str, messages: list[dict[str, str]], *, temperature: float = 0.2,
+              max_tokens: int = 16000, base_url: str | None = None) -> dict[str, Any]:
+    """JSON answer with one automatic retry if the model ran out of room, then best-effort repair."""
+    raw = chat(provider, api_key, model, messages, json_mode=True, temperature=temperature, max_tokens=max_tokens, base_url=base_url)
+    if getattr(raw, "truncated", False):
+        retry = messages + [{"role": "user", "content": "Your previous answer was cut off because it was too long. Answer again with the "
+                             "SAME JSON keys but much more concisely: at most 3 bullets per list and at most 30 words per bullet or sentence."}]
+        raw2 = chat(provider, api_key, model, retry, json_mode=True, temperature=temperature, max_tokens=max_tokens, base_url=base_url)
+        raw = raw2 if not getattr(raw2, "truncated", False) or len(raw2) > len(raw) * 0.3 else raw
+    try:
+        out = parse_json(raw)
+    except Exception:
+        return {"_parse_error": True, "_raw": str(raw)}
+    if getattr(raw, "truncated", False):
+        out["_truncated"] = True
+    return out

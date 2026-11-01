@@ -145,19 +145,33 @@ def esc(text) -> str:
 
 
 def tag_badges(text: str) -> str:
-    text = str(text).replace("$", "\\$")
+    text = re.sub(r"^\((DATA|INFERENCE|ASSUMPTION)\)", r"[\1]", str(text).strip()).replace("$", "\\$")
     text = text.replace("[DATA]", ":green-badge[DATA]").replace("[INFERENCE]", ":blue-badge[INFERENCE]")
     return text.replace("[ASSUMPTION]", ":orange-badge[ASSUMPTION]")
 
 
+_TAG_SPLIT = re.compile(r"\s*(?=[\[(](?:DATA|INFERENCE|ASSUMPTION)[\])])")
+
+
+def as_points(x) -> list[str]:
+    """Normalise model text into short one-claim bullets: lists stay lists; a paragraph holding several
+    [DATA]/[INFERENCE]/[ASSUMPTION] claims is split at each tag; nested dicts are flattened."""
+    if x is None or x == "":
+        return []
+    if isinstance(x, dict):
+        return [p for v in x.values() for p in as_points(v)]
+    if isinstance(x, (list, tuple)):
+        return [p for v in x for p in as_points(v)]
+    parts = [p.strip() for p in _TAG_SPLIT.split(str(x)) if p.strip()]
+    return parts or [str(x)]
+
+
 def bullets(items, empty: str = "—") -> None:
-    if not items:
+    pts = as_points(items)
+    if not pts:
         st.caption(empty)
         return
-    if isinstance(items, str):
-        st.markdown(tag_badges(items))
-        return
-    st.markdown("\n".join(f"- {tag_badges(i)}" for i in items))
+    st.markdown("\n".join(f"- {tag_badges(i)}" for i in pts))
 
 
 def fmt(v, suffix: str = "", nd: int = 1, prefix: str = "") -> str:
@@ -630,60 +644,88 @@ def _run_extraction(card: dict):
     return ex
 
 
+def _sect(title: str, items, empty: str = "—") -> None:
+    st.markdown(f"#### {title}")
+    bullets(items, empty)
+
+
 def render_ipo_report(rep: dict, card: dict) -> None:
     if rep.get("_parse_error"):
-        st.warning("The model did not return valid JSON — raw output below.")
-        st.markdown(esc(rep.get("_raw", ""))[:6000])
+        st.error("The AI's answer could not be read. Click **Generate IPO analysis** again, or pick a different model in the sidebar.")
+        with st.expander("Show the raw answer"):
+            st.text(rep.get("_raw", "")[:8000])
         return
+    if rep.get("_truncated"):
+        st.info("The AI's answer was cut off before the end — showing every complete section. Click **Generate IPO analysis** again for a full answer.")
     if rep.get("one_liner"):
         st.markdown(f"<div class='card verdict'>{html_escape(rep['one_liner'])}</div>", unsafe_allow_html=True)
+
     sg = rep.get("suggestions") or {}
     cols = st.columns(3)
     for col, (k, lbl) in zip(cols, (("listing_gains", "🎯 Apply for listing gains"), ("short_term", "⏱️ Short-term holding (1–6 months)"),
                                     ("long_term", "🌱 Long-term holding (2–3 years+)"))):
         s_ = sg.get(k) or {}
         colr, icon = VERDICT_STYLE.get(s_.get("verdict", ""), ("#8a8980", "⚪"))
-        col.markdown(f"<div class='verdict-card' style='border-top:4px solid {colr}'><div class='h'>{lbl}</div>"
-                     f"<div class='v' style='color:{colr}'>{icon} {html_escape(s_.get('verdict', '—'))}</div>"
-                     f"<div class='h'>Confidence: {html_escape(s_.get('confidence', '—'))}</div></div>", unsafe_allow_html=True)
-        col.markdown(tag_badges(s_.get("reason", "")))
+        with col:
+            st.markdown(f"<div class='verdict-card' style='border-top:4px solid {colr}'><div class='h'>{lbl}</div>"
+                        f"<div class='v' style='color:{colr}'>{icon} {html_escape(s_.get('verdict', '—'))}</div>"
+                        f"<div class='h'>Confidence: {html_escape(s_.get('confidence', '—'))}</div></div>", unsafe_allow_html=True)
+            bullets(s_.get("reasons") or s_.get("reason"))
+
     a = rep.get("_audit", {})
     if a.get("figures_checked"):
         msg = f"Number audit: {a['traced_pct']}% of {a['figures_checked']} figures trace back to the data."
         (st.warning if a["unverified"] else st.caption)(msg + (" Not found: " + ", ".join(a["unverified"][:10]) if a["unverified"] else ""))
-    st.subheader("Where the company stands")
-    st.markdown(tag_badges(rep.get("company_position", "—")))
-    f = rep.get("fundamentals") or {}
-    st.subheader(f"Fundamentals — {f.get('assessment', '—')}")
-    for k in ("growth", "profitability", "balance_sheet", "cash_flows"):
-        if f.get(k):
-            st.markdown(f"**{k.replace('_', ' ').capitalize()}** — {tag_badges(f[k])}")
-    v = rep.get("valuation") or {}
-    st.subheader(f"Valuation — {v.get('assessment', '—')}")
-    st.markdown(tag_badges(v.get("summary", "—")))
-    st.subheader("Issue structure & demand")
-    st.markdown(tag_badges(rep.get("issue_structure", "—")))
-    st.markdown(tag_badges(rep.get("demand", "—")))
+    st.caption("Tags: :green-badge[DATA] from NSE/prospectus · :blue-badge[INFERENCE] the AI's reasoning · :orange-badge[ASSUMPTION] general knowledge")
+    miss = "Not in this answer (it was cut off) — generate again" if rep.get("_truncated") else "—"
+
+    st.markdown("---")
     c1, c2 = st.columns(2)
     with c1:
-        st.subheader("✅ Strengths")
-        bullets(rep.get("strengths"))
+        _sect("🏢 Where the company stands", rep.get("company_position"), miss)
+        f = rep.get("fundamentals") or {}
+        st.markdown(f"#### 📊 Fundamentals — {f.get('assessment', '—')}")
+        for k, lbl in (("growth", "Growth"), ("profitability", "Profitability"), ("balance_sheet", "Balance sheet"), ("cash_flows", "Cash flows")):
+            if f.get(k):
+                st.markdown(f"**{lbl}**")
+                bullets(f[k])
     with c2:
-        st.subheader("⚠️ Risks")
-        bullets(rep.get("risks"))
-    if rep.get("red_flags"):
-        st.subheader("🚩 Red flags")
-        bullets(rep["red_flags"])
-    st.subheader("📋 Check before applying")
-    bullets(rep.get("what_to_check_before_applying"))
-    with st.expander("Data gaps"):
-        bullets(rep.get("data_gaps"))
-    md = [f"# {card['company']} ({card['symbol']}) — IPO analysis", f"> {rep.get('one_liner', '')}", ""]
-    for k, lbl in (("listing_gains", "Listing gains"), ("short_term", "Short term"), ("long_term", "Long term")):
+        v = rep.get("valuation") or {}
+        _sect(f"💰 Valuation — {v.get('assessment', '—')}", v.get("points") or v.get("summary"), miss)
+        _sect("🧾 Issue structure", rep.get("issue_structure"), miss)
+        _sect("📈 Demand (subscription)", rep.get("demand"), miss)
+
+    st.markdown("---")
+    c1, c2 = st.columns(2)
+    with c1:
+        _sect("✅ Strengths", rep.get("strengths"), miss)
+    with c2:
+        _sect("⚠️ Risks", rep.get("risks"), miss)
+    if as_points(rep.get("red_flags")):
+        _sect("🚩 Red flags", rep.get("red_flags"))
+    c1, c2 = st.columns(2)
+    with c1:
+        _sect("📋 Check before applying", rep.get("what_to_check_before_applying"), miss)
+    with c2:
+        with st.expander("Data gaps"):
+            bullets(rep.get("data_gaps"))
+
+    def md_list(x) -> list[str]:
+        return [f"- {p}" for p in as_points(x)]
+
+    md = [f"# {card['company']} ({card['symbol']}) — IPO analysis", "", f"> {rep.get('one_liner', '')}", ""]
+    for k, lbl in (("listing_gains", "Listing gains"), ("short_term", "Short-term holding"), ("long_term", "Long-term holding")):
         s_ = sg.get(k) or {}
-        md.append(f"**{lbl}: {s_.get('verdict', '—')}** ({s_.get('confidence', '—')} confidence) — {s_.get('reason', '')}")
-    md += ["", "## Where the company stands", rep.get("company_position", ""), "", "## Risks"] + [f"- {r}" for r in rep.get("risks", [])]
-    md += ["", "---", f"*{DISCLAIMER}*"]
+        md += [f"## {lbl}: {s_.get('verdict', '—')} ({s_.get('confidence', '—')} confidence)"] + md_list(s_.get("reasons") or s_.get("reason")) + [""]
+    f = rep.get("fundamentals") or {}
+    for title, x in (("Where the company stands", rep.get("company_position")), (f"Fundamentals — {f.get('assessment', '—')}", f),
+                     (f"Valuation — {(rep.get('valuation') or {}).get('assessment', '—')}", (rep.get("valuation") or {}).get("points")),
+                     ("Issue structure", rep.get("issue_structure")), ("Demand", rep.get("demand")), ("Strengths", rep.get("strengths")),
+                     ("Risks", rep.get("risks")), ("Red flags", rep.get("red_flags")), ("Check before applying", rep.get("what_to_check_before_applying"))):
+        pts = md_list(x)
+        if pts:
+            md += [f"## {title}"] + pts + [""]
+    md += ["---", f"*{DISCLAIMER}*"]
     st.download_button("⬇️ Download IPO note (Markdown)", "\n".join(md), file_name=f"{card['symbol']}_ipo_note.md", mime="text/markdown")
 
 
@@ -712,9 +754,12 @@ def render_verdict(report: dict) -> None:
 
 def render_report(report: dict, pack: dict, figs: list) -> None:
     if report.get("_parse_error"):
-        st.warning("The model did not return valid JSON — showing raw output.")
-        st.markdown(report.get("_raw", ""))
+        st.error("The AI's answer could not be read. Click **Generate AI analysis** again, or pick a different model in the sidebar.")
+        with st.expander("Show the raw answer"):
+            st.text(report.get("_raw", "")[:8000])
         return
+    if report.get("_truncated"):
+        st.info("The AI's answer was cut off before the end — showing every complete section. Generate again for a full answer.")
     render_verdict(report)
     a = report.get("_audit", {})
     if a.get("figures_checked"):
@@ -726,9 +771,10 @@ def render_report(report: dict, pack: dict, figs: list) -> None:
     sug = report.get("investment_suggestion") or {}
     if sug:
         st.subheader(f"💡 Suggestion — best horizon: {sug.get('best_horizon', '—')}")
-        st.markdown(tag_badges(sug.get("summary", "")))
+        bullets(sug.get("summary"))
         if sug.get("avoid_if"):
-            st.markdown(f"**Doesn't apply if:** {tag_badges(sug['avoid_if'])}")
+            st.markdown("**Doesn't apply if:**")
+            bullets(sug["avoid_if"])
     hr = report.get("horizon_ratings") or []
     if hr:
         st.subheader("🎯 Ratings by horizon (model vs AI)")
@@ -740,12 +786,12 @@ def render_report(report: dict, pack: dict, figs: list) -> None:
             st.caption("The AI changed the model rating for: " + ", ".join(h["horizon"] for h in changed) + " — see 'Why'.")
     st.subheader("Executive summary")
     bullets(report.get("executive_summary"))
-    st.markdown(f"**Business:** {report.get('business_overview', '—')}")
+    st.markdown(f"**Business:** {esc(report.get('business_overview', '—'))}")
     c1, c2 = st.columns(2)
     h = report.get("company_health", {})
     with c1:
         st.subheader(f"Company health — {h.get('assessment', '—')}")
-        st.markdown(tag_badges(h.get("summary", "")))
+        bullets(h.get("summary"))
         st.markdown("**Strengths**")
         bullets(h.get("strengths"))
         st.markdown("**Red flags**")
@@ -755,19 +801,23 @@ def render_report(report: dict, pack: dict, figs: list) -> None:
         st.subheader("Fundamentals")
         for k in ("growth", "profitability", "balance_sheet", "cash_flow_and_earnings_quality", "recent_quarters"):
             if f.get(k):
-                st.markdown(f"**{k.replace('_', ' ').capitalize()}** — {tag_badges(f[k])}")
+                st.markdown(f"**{k.replace('_', ' ').capitalize()}**")
+                bullets(f[k])
     v = report.get("valuation", {})
     st.subheader(f"Valuation — {v.get('assessment', '—')}")
-    st.markdown(tag_badges(v.get("summary", "")))
-    st.markdown(f"**Market-implied expectations:** {tag_badges(v.get('market_implied_expectations', '—'))}")
+    bullets(v.get("summary"))
+    st.markdown("**Market-implied expectations**")
+    bullets(v.get("market_implied_expectations"))
     st.markdown(f"**Model fair-value range:** {v.get('model_fair_value_range', '—')}")
     bullets(v.get("key_assumptions"))
     t = report.get("technical", {})
     st.subheader("Technical view")
-    st.markdown(tag_badges(t.get("summary", "")))
+    bullets(t.get("summary"))
     tc = st.columns(3)
     for col, (k, lbl) in zip(tc, [("short_term", "Short term"), ("medium_term", "Medium term"), ("long_term", "Long term")]):
-        col.markdown(f"<div class='card'><b>{lbl}</b><br>{t.get(k, '—')}</div>", unsafe_allow_html=True)
+        with col:
+            st.markdown(f"**{lbl}**")
+            bullets(t.get(k))
     kl = t.get("key_levels", {})
     st.markdown(f"**Support:** {' · '.join(kl.get('support', [])) or '—'}  \n**Resistance:** {' · '.join(kl.get('resistance', [])) or '—'}  \n**Invalidation:** {t.get('invalidation', '—')}")
     bullets(t.get("chart_observations"))
@@ -781,7 +831,8 @@ def render_report(report: dict, pack: dict, figs: list) -> None:
     nr = report.get("news_and_results") or {}
     if nr:
         st.subheader(f"📰 News & results — sentiment: {nr.get('news_sentiment', '—')}")
-        st.markdown(f"**Latest results:** {tag_badges(nr.get('latest_results', '—'))}")
+        st.markdown("**Latest results**")
+        bullets(nr.get("latest_results"))
         bullets(nr.get("key_announcements"), "No material announcements")
         if nr.get("upcoming_events"):
             st.markdown("**Upcoming:** " + "; ".join(nr["upcoming_events"]))

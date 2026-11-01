@@ -14,6 +14,9 @@ and thesis-tracker workflows):
 9. Horizon-wise ratings (1 Week → Long term) starting from the model ratings, and a best-horizon suggestion.
 10. Catalysts and risks with an India lens; what would change your mind; a quarterly monitoring checklist.
 
+LENGTH BUDGET (strict — longer answers get cut off and are lost): every paragraph at most 60 words; every list at
+most 4 bullets of at most 30 words each; whole answer under 1,800 words. Prefer short tagged sentences over long ones.
+
 Return ONE JSON object with exactly these keys (strings may use **bold**; every bullet starts with an evidence tag):
 
 {{

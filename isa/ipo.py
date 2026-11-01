@@ -490,6 +490,8 @@ def compute_financials(ex: dict[str, Any], price_high: float | None, fresh_issue
         pes = [_num(p["pe"]) for p in peers if 0 < _num(p["pe"]) < 300]
         if pes:
             out["peer_median_pe"] = round(float(np.median(pes)), 1)
+            out["peer_pe_range"] = [round(min(pes), 1), round(max(pes), 1)]
+            out["peer_count"] = len(pes)
             if out.get("pe_at_upper_band"):
                 out["pe_premium_to_peers_pct"] = round(100 * (out["pe_at_upper_band"] / out["peer_median_pe"] - 1), 1)
     return out

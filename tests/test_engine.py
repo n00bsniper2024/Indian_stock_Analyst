@@ -130,7 +130,9 @@ def test_generate_report_and_exports(monkeypatch):
     import isa.ai as ai
     from isa.report import to_html, to_markdown
 
-    monkeypatch.setattr(ai, "chat", lambda *a, **k: "```json\n" + json.dumps(SAMPLE_REPORT) + "\n```")
+    import isa.llm as L
+
+    monkeypatch.setattr(L, "chat", lambda *a, **k: L._text("```json\n" + json.dumps(SAMPLE_REPORT) + "\n```", False))
     pack = build_fact_pack("TCS", with_peers=False)
     rep = ai.generate_report(pack, "DeepSeek", "key", "deepseek-flash")
     assert rep["verdict"]["stance"] == "Neutral" and "_audit" in rep
@@ -245,3 +247,45 @@ def test_news_summary_next_results():
     s = summarise({"announcements": [], "board_meetings": [{"date": str(d), "purpose": "x", "details": "results", "is_results": True}],
                    "corporate_actions": [], "news": [], "errors": []})
     assert s["days_to_results"] == 6
+
+
+# ---------------------------------------------------------------- AI output robustness
+def test_parse_json_repairs_cut_off_answer():
+    from isa.llm import parse_json
+
+    cut = '{"one_liner": "x", "fundamentals": {"growth": "[DATA] a", "assessment": "Average"}, "issue_structure": "[DATA] fresh issue. [INFERENCE] lowers interest co'
+    d = parse_json(cut)
+    assert d["_truncated"] and d["fundamentals"]["assessment"] == "Average" and "issue_structure" not in d
+    assert parse_json('{"a": ["x", "y", "unfin') == {"a": ["x", "y"], "_truncated": True}
+
+
+def test_chat_json_retries_once_when_truncated(monkeypatch):
+    import isa.llm as L
+
+    calls = []
+
+    def fake(provider, key, model, messages, **kw):
+        calls.append(messages)
+        return L._text('{"a": 1, "b": "long', True) if len(calls) == 1 else L._text('{"a": 1, "b": "short"}', False)
+
+    monkeypatch.setattr(L, "chat", fake)
+    out = L.chat_json("DeepSeek", "k", "m", [{"role": "user", "content": "q"}])
+    assert out == {"a": 1, "b": "short"} and len(calls) == 2 and "cut off" in calls[1][-1]["content"]
+
+
+def test_as_points_splits_tagged_paragraphs():
+    import ast
+    import re as _re
+    from pathlib import Path
+
+    src = Path(__file__).resolve().parent.parent.joinpath("app.py").read_text()
+    tree = ast.parse(src)
+    ns = {"re": _re}
+    for node in tree.body:
+        if (isinstance(node, ast.Assign) and any(getattr(t, "id", "") == "_TAG_SPLIT" for t in node.targets)) or \
+           (isinstance(node, ast.FunctionDef) and node.name == "as_points"):
+            exec(compile(ast.Module([node], []), "app.py", "exec"), ns)
+    pts = ns["as_points"]("[DATA] Revenue 1,267 crore. (INFERENCE) Thin margins. [ASSUMPTION] Cyclical.")
+    assert pts == ["[DATA] Revenue 1,267 crore.", "(INFERENCE) Thin margins.", "[ASSUMPTION] Cyclical."]
+    assert ns["as_points"]({"g": ["[DATA] a"], "p": "[DATA] b"}) == ["[DATA] a", "[DATA] b"]
+    assert ns["as_points"](None) == []

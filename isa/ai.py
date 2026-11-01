@@ -8,7 +8,7 @@ import numpy as np
 
 from .analysis import fact_pack_json
 from .config import PROMPTS_DIR
-from .llm import chat, parse_json
+from .llm import chat, chat_json, parse_json
 
 
 def _prompt(name: str) -> str:
@@ -32,11 +32,7 @@ def qa_messages(pack: dict[str, Any], history: list[dict[str, str]], report: dic
 
 
 def generate_report(pack: dict[str, Any], provider: str, api_key: str, model: str, base_url: str | None = None) -> dict[str, Any]:
-    raw = chat(provider, api_key, model, report_messages(pack), json_mode=True, temperature=0.2, max_tokens=10000, base_url=base_url)
-    try:
-        report = parse_json(raw)
-    except Exception:
-        report = {"_raw": raw, "_parse_error": True}
+    report = chat_json(provider, api_key, model, report_messages(pack), temperature=0.2, max_tokens=16000, base_url=base_url)
     report["_audit"] = audit_numbers(report, pack)
     return report
 
@@ -122,11 +118,9 @@ def extract_ipo_financials(company: str, rhp: dict[str, Any], provider: str, api
     excerpts = ipo_excerpts(rhp)
     msgs = [{"role": "system", "content": "You extract data from Indian IPO prospectuses with exact fidelity. Output JSON only."},
             {"role": "user", "content": _prompt("ipo_extract.md").format(company=company, excerpts=excerpts)}]
-    raw = chat(provider, api_key, model, msgs, json_mode=True, temperature=0.0, max_tokens=6000, base_url=base_url)
-    try:
-        ex = parse_json(raw)
-    except Exception:
-        return {"_parse_error": True, "_raw": raw[:2000]}
+    ex = chat_json(provider, api_key, model, msgs, temperature=0.0, max_tokens=12000, base_url=base_url)
+    if ex.get("_parse_error"):
+        return ex
     ex["_verification"] = verify_numbers({k: v for k, v in ex.items() if not k.startswith("_")}, excerpts)
     return ex
 
@@ -142,10 +136,6 @@ def generate_ipo_analysis(pack: dict[str, Any], provider: str, api_key: str, mod
     user = _prompt("ipo_analysis.md").format(company=ipo["company"], symbol=ipo["symbol"], board=ipo["board"],
                                              fact_pack=json.dumps(slim, ensure_ascii=False, separators=(",", ":")))
     msgs = [{"role": "system", "content": _prompt("system_ipo.md")}, {"role": "user", "content": user}]
-    raw = chat(provider, api_key, model, msgs, json_mode=True, temperature=0.2, max_tokens=7000, base_url=base_url)
-    try:
-        rep = parse_json(raw)
-    except Exception:
-        return {"_raw": raw, "_parse_error": True}
+    rep = chat_json(provider, api_key, model, msgs, temperature=0.2, max_tokens=16000, base_url=base_url)
     rep["_audit"] = audit_numbers(rep, slim)
     return rep

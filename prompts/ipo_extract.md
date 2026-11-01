@@ -9,6 +9,8 @@ Rules:
   Basis for Issue Price). If only pre-issue shares and fresh-issue shares are given, return both and leave post_issue_shares null.
 - Borrowings: copy non-current and current borrowings separately exactly as printed (do NOT add them up).
 - Always copy "Equity share capital" from the latest restated balance sheet (same unit) and the face value per share.
+- RoNW and NAV: take the latest FULL financial year, not a stub quarter (stub-period figures are not annualised).
+- Keep text fields short: business_summary <= 70 words, each list item <= 25 words, at most 6 items per list.
 - Peers: copy the listed-peer comparison table from "Basis for Issue Price" (name, P/E, RoNW %) if present.
 - For each list item (objects, risks, litigation) write ONE short factual line in your own words, with the RHP page if visible.
 
@@ -21,7 +23,7 @@ Return ONE JSON object:
   "pre_issue_shares": 0, "fresh_issue_shares": 0, "ofs_shares": 0, "post_issue_shares": 0,
   "equity_share_capital_latest": 0, "face_value_per_share": 0,
   "promoter_holding_pre_issue_pct": 0, "promoter_holding_post_issue_pct": 0,
-  "ipo_pe_upper_band_as_stated": 0, "ronw_latest_pct_as_stated": 0, "nav_per_share_as_stated": 0,
+  "ipo_pe_upper_band_as_stated": 0, "ronw_latest_full_year_pct_as_stated": 0, "nav_per_share_latest_full_year_as_stated": 0,
   "peers": [{{"name": "", "pe": 0, "ronw_pct": 0}}],
   "objects_of_issue": ["what the fresh-issue money will be used for, with ₹ amounts as printed"],
   "business_summary": "3-4 factual sentences: what the company makes/does, customers, plants/locations, revenue mix",
