@@ -1,0 +1,15 @@
+[theme]
+base = "dark"
+primaryColor = "#3987e5"
+backgroundColor = "#151514"
+secondaryBackgroundColor = "#1f1f1d"
+textColor = "#f0efec"
+
+[server]
+headless = true
+# Keep the dashboard on this machine only. Change to 0.0.0.0 to reach it from your LAN.
+address = "localhost"
+port = 8501
+
+[browser]
+gatherUsageStats = false

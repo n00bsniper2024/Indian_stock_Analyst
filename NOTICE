@@ -1,0 +1,13 @@
+Indian Stock Analyst
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The `equity-research-india/` plugin and the research methodology in `prompts/` are adapted from the
+`equity-research` plugin in Anthropic's financial-services repository
+(https://github.com/anthropics/financial-services), Copyright Anthropic, licensed under the Apache License 2.0.
+Modifications: re-targeted to Indian markets (NSE/BSE, SEBI, ₹, April–March fiscal year), numbers sourced from a
+deterministic Python engine, evidence tagging, technical analysis, reverse DCF / justified P/B, Altman Z''-EM,
+Piotroski F-score, end-to-end initiation workflow with checkpoints, and SEBI-aware compliance language.
+
+Market data is retrieved at runtime from Yahoo Finance via the open-source `yfinance` library and from NSE's public
+index-constituent files. This project is not affiliated with Anthropic, Yahoo, NSE or BSE. Check each data
+provider's terms of use; yfinance is intended for personal research and education.

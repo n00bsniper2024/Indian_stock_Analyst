@@ -1,0 +1,24 @@
+# secrets
+.env
+.streamlit/secrets.toml
+
+# caches & outputs
+.cache/
+__pycache__/
+*.pyc
+.pytest_cache/
+*_fact_pack.json
+*_research_note.*
+theses/*.md
+!theses/README.md
+
+# environments
+.venv/
+venv/
+env/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

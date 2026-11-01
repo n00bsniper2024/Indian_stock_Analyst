@@ -1,0 +1,10 @@
+{
+  "name": "equity-research-india",
+  "version": "1.0.0",
+  "description": "Indian-market equity research for Claude: stock analysis (fundamental + technical + valuation), initiating coverage, quarterly results, screens, sector notes, catalyst calendar and thesis tracking. Adapted from Anthropic's equity-research plugin; numbers come from the Indian Stock Analyst engine, not from the model.",
+  "author": {
+    "name": "Indian Stock Analyst contributors"
+  },
+  "homepage": "https://github.com/n00bsniper2024/Indian_stock_Analyst",
+  "license": "Apache-2.0"
+}
