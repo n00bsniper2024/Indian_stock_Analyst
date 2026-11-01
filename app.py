@@ -573,6 +573,9 @@ def ipo_detail_view(card: dict) -> None:
         c1, c2 = st.columns([1, 3])
         go_ = c1.button("🤖 Generate IPO analysis", key=f"ipo_ai_{sym}", type="primary", width="stretch")
         c2.markdown(f"Engine: **{provider}** · model **{model or '—'}** — reads the prospectus first if needed (2 AI calls).")
+        if go_ and PROVIDERS[provider].env_key and not api_key:
+            st.error(f"Add your {provider} API key in the sidebar first (or put it in the .env file).")
+            go_ = False
         if go_:
             if not ex:
                 ex = _run_extraction(card)
@@ -604,6 +607,9 @@ def ipo_detail_view(card: dict) -> None:
 
 def _run_extraction(card: dict):
     sym = card["symbol"]
+    if PROVIDERS[provider].env_key and not api_key:
+        st.error(f"Add your {provider} API key in the sidebar first — reading the prospectus uses the AI.")
+        return None
     with st.spinner("Downloading the prospectus from NSE and finding the key sections (first time ~20 s)…"):
         rhp = ipo_mod.rhp_sections(sym, card["series"])
     if not rhp.get("available"):

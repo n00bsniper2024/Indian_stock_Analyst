@@ -20,7 +20,7 @@ import pandas as pd
 import requests
 
 from .config import CACHE_DIR, DEMO_MODE
-from .data import _cached
+from .data import _cache_forget, _cached
 from .news import _UA, _nse_json
 
 NSE_ARCHIVE = "https://nsearchives.nseindia.com/content/ipo/{name}.zip"
@@ -315,7 +315,10 @@ def rhp_sections(symbol: str, series: str = "EQ") -> dict[str, Any]:
         return {"available": False, "reason": "demo mode"}
 
     def build() -> dict[str, Any]:
-        import pypdf
+        try:
+            import pypdf
+        except ImportError:
+            return {"available": False, "reason": "The 'pypdf' package is missing — run: bash scripts/update.sh"}
 
         try:
             links = ipo_detail(symbol, series).get("links", {})
@@ -374,7 +377,11 @@ def rhp_sections(symbol: str, series: str = "EQ") -> dict[str, Any]:
             out["sections"][key] = {"pdf_pages": f"{start + 1}-{min(n, start + take)}", "text": text[:max_chars]}
         return out
 
-    return _cached(f"ipo:rhp:{symbol}", 7 * 24 * 3600, build)
+    key = f"ipo:rhp:{symbol}"
+    out = _cached(key, 7 * 24 * 3600, build)
+    if not out.get("available"):
+        _cache_forget(key)  # never remember failures: the RHP or the PDF library may be available next time
+    return out
 
 
 # --------------------------------------------------------------------------- financials from RHP

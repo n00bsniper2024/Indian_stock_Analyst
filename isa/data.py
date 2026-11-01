@@ -68,6 +68,10 @@ def _cached(key: str, ttl: int, fn: Callable[[], Any]) -> Any:
     return value
 
 
+def _cache_forget(key: str) -> None:
+    (CACHE_DIR / f"{hashlib.sha1(key.encode()).hexdigest()}.pkl").unlink(missing_ok=True)
+
+
 def _retry(fn: Callable[[], Any], attempts: int = 3, base_delay: float = 4.0) -> Any:
     last: Exception | None = None
     for i in range(attempts):

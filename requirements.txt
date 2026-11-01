@@ -7,6 +7,7 @@ yfinance>=1.0          # 1.x fixes the 2025 Yahoo rate-limit breakage
 requests>=2.31
 python-dotenv>=1.0
 tabulate>=0.9          # markdown tables in the CLI
+pypdf>=4.0             # reads IPO prospectuses (RHP)
 
 # AI providers (openai SDK talks to DeepSeek, Gemini, Groq, OpenRouter, Ollama too)
 openai>=1.40
