@@ -62,6 +62,37 @@ st.markdown(
     .card{background:#1f1f1d;border:1px solid #2c2c29;border-radius:12px;padding:14px 18px;margin-bottom:12px}
     .verdict{font-size:1.05rem;border-left:4px solid #3987e5}
     .flag{color:#f2a0a0} .ok{color:#7fd67f}
+
+    /* ---- tabs as buttons: wrap onto a second row instead of scrolling sideways ---- */
+    [role="tablist"]{flex-wrap:wrap;gap:8px;overflow:visible !important;padding:4px 0 10px 0;border-bottom:1px solid #2c2c29}
+    [data-testid="stTab"]{background:#1f1f1d;border:1px solid #3a3a36;border-radius:10px;padding:9px 16px !important;
+        margin:0 !important;height:auto;min-height:40px;cursor:pointer;transition:background .15s,border-color .15s}
+    [data-testid="stTab"] p{font-size:0.98rem !important;font-weight:600;color:#e4e3de;margin:0}
+    [data-testid="stTab"]:hover{border-color:#3987e5;background:#1f2a3a}
+    [data-testid="stTab"][aria-selected="true"]{background:#3987e5;border-color:#3987e5;box-shadow:0 2px 10px rgba(57,135,229,.35)}
+    [data-testid="stTab"][aria-selected="true"] p{color:#ffffff}
+    [data-testid="stTab"]:focus-visible{outline:2px solid #9ec5f4;outline-offset:2px}
+    .react-aria-SelectionIndicator{display:none !important}
+
+    /* ---- radio groups (sidebar views, timeframe pickers) as full-width buttons ---- */
+    [data-testid="stElementContainer"]:has(> [data-testid="stRadio"]), [data-testid="stRadio"]{width:100% !important}
+    [data-testid="stRadioGroup"]{gap:8px;width:100% !important}
+    [data-testid="stRadioGroup"][aria-orientation="vertical"]{display:flex;flex-direction:column}
+    [data-testid="stRadioGroup"] > div{width:100%}
+
+    /* ---- horizon rating cards: responsive grid that wraps instead of squashing text ---- */
+    .hz-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:10px}
+    .hz-card{background:#1f1f1d;border:1px solid #2c2c29;border-radius:12px;padding:12px 10px;text-align:center}
+    .hz-card .h{color:#a3a29a;font-size:.85rem} .hz-card .r{font-size:1.15rem;font-weight:700;white-space:nowrap}
+    .hz-card .s{color:#a3a29a;font-size:.8rem}
+    [data-testid="stRadioOption"]{width:100%;background:#1f1f1d;border:1px solid #3a3a36;border-radius:10px;
+        padding:10px 14px;cursor:pointer;transition:background .15s,border-color .15s}
+    [data-testid="stRadioOption"] > div > div:first-child{display:none}   /* hide the radio dot */
+    [data-testid="stRadioOption"] p{font-size:1rem !important;font-weight:600;color:#e4e3de;margin:0}
+    [data-testid="stRadioOption"]:hover{border-color:#3987e5;background:#1f2a3a}
+    [data-testid="stRadioOption"][data-selected="true"]{background:#3987e5;border-color:#3987e5;box-shadow:0 2px 10px rgba(57,135,229,.35)}
+    [data-testid="stRadioOption"][data-selected="true"] p{color:#ffffff}
+    [data-testid="stRadioOption"]:has(input:focus-visible){outline:2px solid #9ec5f4;outline-offset:2px}
     </style>""",
     unsafe_allow_html=True,
 )
@@ -482,13 +513,12 @@ def stock_analysis() -> None:
     hz = hv.get("horizons", {})
     if hz:
         st.markdown("### 🎯 Rating by investment horizon")
-        cols = st.columns(len(hz))
         icon = {"Strong Buy": "🟢", "Buy": "🟢", "Neutral": "⚪", "Sell": "🟠", "Strong Sell": "🔴"}
-        for col, (hname, h) in zip(cols, hz.items()):
-            col.markdown(f"<div class='card' style='text-align:center'><span style='color:#a3a29a;font-size:.85rem'>{hname}</span><br>"
-                         f"<b style='font-size:1.15rem'>{icon.get(h['rating'], '⚪')} {h['rating']}</b><br>"
-                         f"<span style='color:#a3a29a;font-size:.8rem'>score {h.get('score', '—')} · {h.get('confidence', '—')} confidence</span></div>",
-                         unsafe_allow_html=True)
+        cards = "".join(
+            f"<div class='hz-card'><div class='h'>{hname}</div><div class='r'>{icon.get(h['rating'], '⚪')} {h['rating']}</div>"
+            f"<div class='s'>score {h.get('score', '—')} · {h.get('confidence', '—')} confidence</div></div>"
+            for hname, h in hz.items())
+        st.markdown(f"<div class='hz-grid'>{cards}</div>", unsafe_allow_html=True)
         st.info(f"**{hv.get('suggestion', '')}** {hv.get('disclaimer', '')}")
 
     names = ["📊 Summary", "🎯 Horizons & plan", "🧱 Levels & breakouts", "📈 Technical", "🏦 Fundamentals", "💰 Valuation",

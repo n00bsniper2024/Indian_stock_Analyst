@@ -341,8 +341,9 @@ def horizon_bars(horizons: dict[str, Any]) -> go.Figure:
                            hovertemplate="%{x}: score %{y}<extra></extra>"))
     for y, t in ((70, "Strong Buy"), (58, "Buy"), (45, "Neutral / Sell")):
         fig.add_hline(y=y, line=dict(color=GRID, width=1, dash="dot"), annotation_text=t, annotation_font=dict(color=MUTED, size=10),
-                      annotation_position="top left")
-    fig.update_yaxes(range=[0, 105], title_text="Model score (0-100)")
+                      annotation_position="top right")
+    fig.update_yaxes(range=[0, 112], title_text="Model score (0-100)")
+    fig.update_xaxes(range=[-0.5, len(names) + 0.3], tickangle=0)  # room on the right for the threshold labels
     return _layout(fig, "Model rating by investment horizon", height=340, legend=False)
 
 
