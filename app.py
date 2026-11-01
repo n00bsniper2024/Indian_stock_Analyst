@@ -24,6 +24,8 @@ from isa.llm import PROVIDERS, LLMError, default_key, list_models, stream_chat
 from isa.overview import breadth, category_snapshot
 from isa.report import DISCLAIMER, to_html, to_markdown
 from isa.classify import load_classification
+from isa import ipo as ipo_mod
+from isa.ai import extract_ipo_financials, generate_ipo_analysis
 from isa.horizons import FACTOR_LABELS
 from isa.news import news_bundle
 from isa.patterns import frames as tf_frames
@@ -165,7 +167,7 @@ def fmt(v, suffix: str = "", nd: int = 1, prefix: str = "") -> str:
 
 
 # --------------------------------------------------------------------------- sidebar
-VIEWS = ["🔎 Stock analysis", "🗺️ Market overview", "📚 Stock universe"]
+VIEWS = ["🔎 Stock analysis", "🗺️ Market overview", "📚 Stock universe", "🆕 IPO centre"]
 with st.sidebar:
     st.markdown("## 📈 Indian Stock Analyst")
     if DEMO_MODE:
@@ -350,6 +352,333 @@ def market_overview() -> None:
             st.button(f"🔎 Analyse {sym}", type="primary", on_click=_jump)
     with c2:
         st.plotly_chart(charts.returns_heatmap(snap, top=25), width="stretch")
+
+
+
+# =========================================================================== IPO CENTRE
+VERDICT_STYLE = {
+    "Apply": ("#0ca30c", "🟢"), "Apply with caution": ("#c98500", "🟡"), "Avoid": ("#d03b3b", "🔴"),
+    "Hold after listing": ("#0ca30c", "🟢"), "Wait and watch": ("#c98500", "🟡"),
+    "Good long-term candidate": ("#0ca30c", "🟢"), "Wait for a better price": ("#c98500", "🟡"),
+}
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def cached_ipo_list():
+    return ipo_mod.list_ipos()
+
+
+@st.cache_data(ttl=6 * 3600, show_spinner=False)
+def cached_recent_listings():
+    try:
+        return ipo_mod.recent_listings()
+    except Exception:
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def cached_ipo_pack(symbol: str, extracted_json: str | None):
+    card = next(c for c in cached_ipo_list() if c["symbol"] == symbol)
+    ex = json.loads(extracted_json) if extracted_json else None
+    return ipo_mod.ipo_fact_pack(card, ex)
+
+
+def _ai_cache_path(kind: str, symbol: str) -> "os.PathLike":
+    from isa.config import CACHE_DIR
+
+    d = CACHE_DIR / "ipo_ai"
+    d.mkdir(parents=True, exist_ok=True)
+    return d / f"{kind}_{re.sub(r'[^A-Za-z0-9]', '_', symbol)}_{re.sub(r'[^A-Za-z0-9]', '_', provider + '_' + (model or ''))}.json"
+
+
+def _load_ai(kind: str, symbol: str):
+    p = _ai_cache_path(kind, symbol)
+    try:
+        return json.loads(p.read_text()) if p.exists() else None
+    except Exception:
+        return None
+
+
+def _save_ai(kind: str, symbol: str, data: dict) -> None:
+    if data and not data.get("_parse_error"):
+        try:
+            _ai_cache_path(kind, symbol).write_text(json.dumps(data, ensure_ascii=False, default=str))
+        except Exception:
+            pass
+
+
+def _ipo_card_html(c: dict) -> str:
+    status_col = {"Open": "#0ca30c", "Upcoming": "#3987e5", "Closed": "#8a8980"}.get(c["status"], "#8a8980")
+    board_col = "#9085e9" if c["board"] == "SME" else "#199e70"
+    sub = f"{c['subscription_x']:.2f}×" if c.get("subscription_x") is not None else "—"
+    band = f"₹{c['price_low']:,.0f}–{c['price_high']:,.0f}" if c.get("price_high") else (c.get("price_band") or "—")
+    lot = f"{c['lot_size']:,.0f} sh" if c.get("lot_size") else "—"
+    mininv = f"₹{c['lot_size'] * c['price_high']:,.0f}" if c.get("lot_size") and c.get("price_high") else "—"
+    return (f"<div class='ipo-card'><div class='ipo-top'><span class='pill' style='background:{status_col}'>{c['status']}</span>"
+            f"<span class='pill' style='background:{board_col}'>{c['board']}</span></div>"
+            f"<div class='ipo-name'>{html_escape(c['company'])}</div><div class='ipo-sym'>{c['symbol']}</div>"
+            f"<div class='ipo-grid'><span>Dates</span><b>{c['open']} → {c['close']}</b><span>Price band</span><b>{band}</b>"
+            f"<span>Lot</span><b>{lot}</b><span>Min. 1 lot</span><b>{mininv}</b><span>Subscribed</span><b>{sub}</b></div></div>")
+
+
+def html_escape(s: str) -> str:
+    import html
+
+    return html.escape(str(s))
+
+
+def ipo_view() -> None:
+    st.title("🆕 IPO centre")
+    st.caption("Open and upcoming IPOs on NSE (mainboard and SME) with issue details, live subscription, financials read from "
+               "the Red Herring Prospectus, and an AI view for listing gains, short-term and long-term holding.")
+    st.markdown("""<style>
+      .ipo-wrap{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin:6px 0 14px}
+      .ipo-card{background:#1f1f1d;border:1px solid #2c2c29;border-radius:12px;padding:14px}
+      .ipo-top{display:flex;gap:6px;margin-bottom:6px}
+      .pill{color:#fff;font-size:.72rem;font-weight:700;padding:2px 9px;border-radius:999px}
+      .ipo-name{font-weight:700;font-size:1.02rem;line-height:1.3} .ipo-sym{color:#a3a29a;font-size:.8rem;margin-bottom:8px}
+      .ipo-grid{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:.86rem} .ipo-grid span{color:#a3a29a}
+      .verdict-card{border-radius:12px;padding:14px 16px;background:#1f1f1d;border:1px solid #2c2c29;height:100%}
+      .verdict-card .h{color:#a3a29a;font-size:.85rem} .verdict-card .v{font-size:1.2rem;font-weight:800;margin:4px 0}
+    </style>""", unsafe_allow_html=True)
+    try:
+        ipos = cached_ipo_list()
+    except Exception as e:
+        st.error(f"Could not load IPOs from NSE: {e}")
+        return
+    recent = cached_recent_listings()
+    mood = ipo_mod.market_mood(recent)
+    if mood.get("available"):
+        m = st.columns(4)
+        m[0].metric("Median listing gain (last 10)", f"{mood['median_listing_gain_pct_last10']:+.1f}%")
+        m[1].metric("Listed above issue price (last 10)", f"{mood['pct_listed_above_issue_last10']:.0f}%")
+        m[2].metric(f"Trading above issue now (last {mood['listings_considered']})", f"{mood['pct_trading_above_issue_now']:.0f}%")
+        m[3].metric("Median return since IPO", f"{mood['median_return_since_ipo_pct']:+.1f}%")
+    if not ipos:
+        st.info("No open or announced IPOs on NSE right now.")
+    else:
+        boards = st.segmented_control("Show", ["All", "Mainboard", "SME"], default="All", key="ipo_board") or "All"
+        shown = [c for c in ipos if boards == "All" or c["board"] == boards]
+        st.markdown("<div class='ipo-wrap'>" + "".join(_ipo_card_html(c) for c in shown) + "</div>", unsafe_allow_html=True)
+        if shown:
+            labels = {c["symbol"]: f"{c['company'].replace(' Limited', '').replace(' Ltd', '')[:34]}" for c in shown}
+            sym = st.pills("Open an IPO for full details and AI analysis", list(labels), format_func=lambda s: labels[s],
+                           default=shown[0]["symbol"], key="ipo_pick") or shown[0]["symbol"]
+            ipo_detail_view(next(c for c in shown if c["symbol"] == sym))
+    if not recent.empty:
+        st.markdown("### 📈 How recent IPOs have done")
+        st.plotly_chart(charts.ipo_listing_history(recent), width="stretch")
+        with st.expander("Table of recent mainboard listings"):
+            st.dataframe(recent, hide_index=True, width="stretch")
+    st.caption("Grey-market premium (GMP) is deliberately not shown: it is unofficial, unregulated and cannot be verified. "
+               "SME IPOs listed only on BSE are not covered. Research tool — not investment advice.")
+
+
+def ipo_detail_view(card: dict) -> None:
+    sym = card["symbol"]
+    ex = st.session_state.get(f"ipo_ex::{sym}") or _load_ai("extract", sym)
+    try:
+        pack = cached_ipo_pack(sym, json.dumps(ex, default=str) if ex else None)
+    except Exception as e:
+        st.error(f"Could not load issue details: {e}")
+        return
+    ip, sub, sc = pack["ipo"], pack["subscription_x"], pack["listing_scorecard"]
+    st.markdown(f"## {html_escape(card['company'])} · `{sym}`")
+    m = st.columns(6)
+    m[0].metric("Price band", f"₹{card['price_low']:,.0f}–{card['price_high']:,.0f}" if card.get("price_high") else "—")
+    m[1].metric("Lot size", f"{ip['lot_size']:,.0f}" if ip.get("lot_size") else "—")
+    m[2].metric("Min. investment (1 lot)", f"₹{ip['min_investment_rs']:,.0f}" if ip.get("min_investment_rs") else "—")
+    m[3].metric("Issue size", f"₹{ip['total_cr']:,.0f} cr" if ip.get("total_cr") else (f"~₹{ip['approx_size_cr_excl_anchor']:,.0f} cr" if ip.get("approx_size_cr_excl_anchor") else "—"))
+    m[4].metric("Subscribed", f"{sub['total']:.2f}×" if sub.get("total") is not None else "—", f"QIB {sub['qib']:.2f}×" if sub.get("qib") else None, delta_color="off")
+    m[5].metric("Closes", str(card["close"]), card["status"], delta_color="off")
+    if card["board"] == "SME":
+        st.warning("SME IPO — small company, thin trading after listing and a large minimum ticket. Higher risk than mainboard IPOs.")
+
+    names = ["🤖 AI analysis", "📋 Issue details & scorecard", "📊 Subscription", "📑 Financials (from RHP)", "📎 Documents"]
+    T = dict(zip(names, st.tabs(names)))
+
+    with T["📋 Issue details & scorecard"]:
+        c1, c2 = st.columns([2, 3])
+        with c1:
+            c1.plotly_chart(charts.gauge(sc.get("score"), f"Listing-gain signals · {sc.get('label')}"), width="stretch")
+            for cv in sc.get("caveats", []):
+                st.caption("⚠️ " + cv)
+            st.caption(sc.get("note", ""))
+        with c2:
+            if sc.get("factors"):
+                st.dataframe(pd.DataFrame(sc["factors"]).rename(columns=str.capitalize), hide_index=True, width="stretch",
+                             column_config={"Score": st.column_config.ProgressColumn(min_value=0, max_value=100, format="%d")})
+        rows = [("Issue type", ip.get("issue_type")), ("Structure", ip.get("structure")), ("Fresh issue", f"₹{ip['fresh_issue_cr']:,.1f} cr" if ip.get("fresh_issue_cr") else None),
+                ("Offer for sale", f"₹{ip['ofs_cr']:,.1f} cr" if ip.get("ofs_cr") else None), ("Face value", ip.get("face_value")),
+                ("Issue size (NSE text)", ip.get("issue_size_text")), ("Max retail application", ip.get("max_retail")),
+                ("Lead managers", ip.get("lead_managers")), ("Registrar", ip.get("registrar")), ("Discount", ip.get("discount"))]
+        st.dataframe(pd.DataFrame([(k, v) for k, v in rows if v], columns=["Item", "Detail"]), hide_index=True, width="stretch")
+
+    with T["📊 Subscription"]:
+        st.plotly_chart(charts.ipo_subscription(pack["subscription_by_category"]), width="stretch")
+        st.caption(f"As of {pack['as_of']} (NSE updates through the day; final figures come after 5 pm on the closing day).")
+        if pack["subscription_by_category"]:
+            st.dataframe(pd.DataFrame(pack["subscription_by_category"]), hide_index=True, width="stretch")
+
+    with T["📑 Financials (from RHP)"]:
+        if not ex:
+            st.info("Financials come from the Red Herring Prospectus. Click **Read prospectus** (uses your AI key once; "
+                    "results are cached) — the AI copies the figures and the code verifies each one against the prospectus text.")
+            if st.button("📑 Read prospectus", key=f"rhp_{sym}", type="primary"):
+                _run_extraction(card)
+                st.rerun()
+        else:
+            v = ex.get("_verification", {})
+            if v.get("checked"):
+                (st.success if not v["not_found_in_rhp"] else st.warning)(
+                    f"{v['found_pct']}% of {v['checked']} extracted figures were found verbatim in the prospectus."
+                    + (f" Not found (treat as unverified): {', '.join(v['not_found_in_rhp'][:8])}" if v["not_found_in_rhp"] else ""))
+            fin = pack["financials_computed"]
+            mm = st.columns(6)
+            mm[0].metric("Revenue CAGR", f"{fin['revenue_cagr_pct']}%" if fin.get("revenue_cagr_pct") is not None else "—")
+            mm[1].metric("PAT margin", f"{fin['pat_margin_pct']}%" if fin.get("pat_margin_pct") is not None else "—")
+            mm[2].metric("ROE", f"{fin['roe_pct']}%" if fin.get("roe_pct") is not None else "—")
+            mm[3].metric("Debt / equity", f"{fin['debt_to_equity']}×" if fin.get("debt_to_equity") is not None else "—")
+            mm[4].metric("P/E at upper band", f"{fin['pe_at_upper_band']}×" if fin.get("pe_at_upper_band") else "—",
+                         f"peers {fin['peer_median_pe']}×" if fin.get("peer_median_pe") else None, delta_color="off")
+            mm[5].metric("Market cap (post-issue)", f"₹{fin['post_issue_mcap_cr_at_upper_band']:,.0f} cr" if fin.get("post_issue_mcap_cr_at_upper_band") else "—")
+            if fin.get("post_issue_shares_basis"):
+                st.caption(f"Post-issue shares: {fin.get('post_issue_shares', 0):,} ({fin['post_issue_shares_basis']}). All ratios computed in code.")
+            st.plotly_chart(charts.ipo_financials(fin.get("table", [])), width="stretch")
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown("**Business (from RHP)**")
+                st.write(ex.get("business_summary") or "—")
+                st.markdown("**Use of IPO money**")
+                bullets([esc(x) for x in ex.get("objects_of_issue") or []])
+                if ex.get("peers"):
+                    st.markdown("**Listed peers (as stated in RHP)**")
+                    st.dataframe(pd.DataFrame(ex["peers"]), hide_index=True, width="stretch")
+            with c2:
+                st.markdown("**Key risks (from RHP)**")
+                bullets([esc(x) for x in ex.get("key_risks") or []])
+                for k, lbl in (("litigation_summary", "Litigation"), ("contingent_liabilities", "Contingent liabilities"),
+                               ("related_party_notes", "Related parties")):
+                    if ex.get(k):
+                        st.markdown(f"**{lbl}:** {esc(ex[k])}")
+                if ex.get("promoter_holding_pre_issue_pct") or ex.get("promoter_holding_post_issue_pct"):
+                    st.markdown(f"**Promoter holding:** {ex.get('promoter_holding_pre_issue_pct', '—')}% before → "
+                                f"{ex.get('promoter_holding_post_issue_pct', '—')}% after the issue")
+            if st.button("↻ Re-read prospectus", key=f"rhp_re_{sym}"):
+                _run_extraction(card)
+                st.rerun()
+
+    with T["🤖 AI analysis"]:
+        rep = st.session_state.get(f"ipo_rep::{sym}") or _load_ai("analysis", sym)
+        c1, c2 = st.columns([1, 3])
+        go_ = c1.button("🤖 Generate IPO analysis", key=f"ipo_ai_{sym}", type="primary", width="stretch")
+        c2.markdown(f"Engine: **{provider}** · model **{model or '—'}** — reads the prospectus first if needed (2 AI calls).")
+        if go_:
+            if not ex:
+                ex = _run_extraction(card)
+            if ex and not ex.get("_parse_error"):
+                cached_ipo_pack.clear()
+                pack = cached_ipo_pack(sym, json.dumps(ex, default=str))
+            with st.spinner("Writing the IPO analysis…"):
+                try:
+                    rep = generate_ipo_analysis(pack, provider, api_key, model, base_url)
+                    st.session_state[f"ipo_rep::{sym}"] = rep
+                    _save_ai("analysis", sym, rep)
+                except LLMError as e:
+                    st.error(str(e))
+                else:
+                    st.rerun()  # refresh every tab (financials were drawn before the extraction finished)
+        if rep:
+            render_ipo_report(rep, card)
+        else:
+            st.info("Click **Generate IPO analysis** for a detailed view of where the company stands, its fundamentals, "
+                    "and suggestions for listing gains, short-term and long-term holding.")
+
+    with T["📎 Documents"]:
+        if pack["documents"]:
+            for k, v in pack["documents"].items():
+                st.markdown(f"- [{esc(k)}]({v})")
+        else:
+            st.caption("No documents published yet.")
+
+
+def _run_extraction(card: dict):
+    sym = card["symbol"]
+    with st.spinner("Downloading the prospectus from NSE and finding the key sections (first time ~20 s)…"):
+        rhp = ipo_mod.rhp_sections(sym, card["series"])
+    if not rhp.get("available"):
+        st.error(rhp.get("reason", "Prospectus not available"))
+        return None
+    with st.spinner(f"{provider} is reading {len(rhp['sections'])} prospectus sections…"):
+        try:
+            ex = extract_ipo_financials(card["company"], rhp, provider, api_key, model, base_url)
+        except LLMError as e:
+            st.error(str(e))
+            return None
+    if ex.get("_parse_error"):
+        st.error("The model did not return valid JSON. Try again or pick another model.")
+        return None
+    st.session_state[f"ipo_ex::{sym}"] = ex
+    _save_ai("extract", sym, ex)
+    cached_ipo_pack.clear()
+    return ex
+
+
+def render_ipo_report(rep: dict, card: dict) -> None:
+    if rep.get("_parse_error"):
+        st.warning("The model did not return valid JSON — raw output below.")
+        st.markdown(esc(rep.get("_raw", ""))[:6000])
+        return
+    if rep.get("one_liner"):
+        st.markdown(f"<div class='card verdict'>{html_escape(rep['one_liner'])}</div>", unsafe_allow_html=True)
+    sg = rep.get("suggestions") or {}
+    cols = st.columns(3)
+    for col, (k, lbl) in zip(cols, (("listing_gains", "🎯 Apply for listing gains"), ("short_term", "⏱️ Short-term holding (1–6 months)"),
+                                    ("long_term", "🌱 Long-term holding (2–3 years+)"))):
+        s_ = sg.get(k) or {}
+        colr, icon = VERDICT_STYLE.get(s_.get("verdict", ""), ("#8a8980", "⚪"))
+        col.markdown(f"<div class='verdict-card' style='border-top:4px solid {colr}'><div class='h'>{lbl}</div>"
+                     f"<div class='v' style='color:{colr}'>{icon} {html_escape(s_.get('verdict', '—'))}</div>"
+                     f"<div class='h'>Confidence: {html_escape(s_.get('confidence', '—'))}</div></div>", unsafe_allow_html=True)
+        col.markdown(tag_badges(s_.get("reason", "")))
+    a = rep.get("_audit", {})
+    if a.get("figures_checked"):
+        msg = f"Number audit: {a['traced_pct']}% of {a['figures_checked']} figures trace back to the data."
+        (st.warning if a["unverified"] else st.caption)(msg + (" Not found: " + ", ".join(a["unverified"][:10]) if a["unverified"] else ""))
+    st.subheader("Where the company stands")
+    st.markdown(tag_badges(rep.get("company_position", "—")))
+    f = rep.get("fundamentals") or {}
+    st.subheader(f"Fundamentals — {f.get('assessment', '—')}")
+    for k in ("growth", "profitability", "balance_sheet", "cash_flows"):
+        if f.get(k):
+            st.markdown(f"**{k.replace('_', ' ').capitalize()}** — {tag_badges(f[k])}")
+    v = rep.get("valuation") or {}
+    st.subheader(f"Valuation — {v.get('assessment', '—')}")
+    st.markdown(tag_badges(v.get("summary", "—")))
+    st.subheader("Issue structure & demand")
+    st.markdown(tag_badges(rep.get("issue_structure", "—")))
+    st.markdown(tag_badges(rep.get("demand", "—")))
+    c1, c2 = st.columns(2)
+    with c1:
+        st.subheader("✅ Strengths")
+        bullets(rep.get("strengths"))
+    with c2:
+        st.subheader("⚠️ Risks")
+        bullets(rep.get("risks"))
+    if rep.get("red_flags"):
+        st.subheader("🚩 Red flags")
+        bullets(rep["red_flags"])
+    st.subheader("📋 Check before applying")
+    bullets(rep.get("what_to_check_before_applying"))
+    with st.expander("Data gaps"):
+        bullets(rep.get("data_gaps"))
+    md = [f"# {card['company']} ({card['symbol']}) — IPO analysis", f"> {rep.get('one_liner', '')}", ""]
+    for k, lbl in (("listing_gains", "Listing gains"), ("short_term", "Short term"), ("long_term", "Long term")):
+        s_ = sg.get(k) or {}
+        md.append(f"**{lbl}: {s_.get('verdict', '—')}** ({s_.get('confidence', '—')} confidence) — {s_.get('reason', '')}")
+    md += ["", "## Where the company stands", rep.get("company_position", ""), "", "## Risks"] + [f"- {r}" for r in rep.get("risks", [])]
+    md += ["", "---", f"*{DISCLAIMER}*"]
+    st.download_button("⬇️ Download IPO note (Markdown)", "\n".join(md), file_name=f"{card['symbol']}_ipo_note.md", mime="text/markdown")
 
 
 # =========================================================================== STOCK ANALYSIS
@@ -901,5 +1230,7 @@ if view == VIEWS[0]:
     stock_analysis()
 elif view == VIEWS[1]:
     market_overview()
-else:
+elif view == VIEWS[2]:
     universe_view()
+else:
+    ipo_view()

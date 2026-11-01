@@ -359,3 +359,59 @@ def history_compare(hist: dict[str, Any]) -> go.Figure:
     fig.update_layout(barmode="group", bargroupgap=0.08)
     fig.update_yaxes(range=[0, 105], title_text="% of times the stock was higher")
     return _layout(fig, "Did this technical setup help in the past? (this stock, ~10 years)", height=340)
+
+
+# =========================================================================== IPO
+def ipo_subscription(rows: list[dict[str, Any]]) -> go.Figure:
+    keep = []
+    for r in rows:
+        c = (r.get("category") or "")
+        t = r.get("times")
+        if t is None or not r.get("offered"):
+            continue
+        cl = c.lower()
+        short = ("QIB" if "qualified" in cl else "NII (₹2–10 lakh)" if "two lakh" in cl else "NII (> ₹10 lakh)" if "ten lakh" in cl
+                 else "NII total" if c.strip() == "Non Institutional Investors" else "Retail" if "Retail" in c or c.startswith("Individual Investors")
+                 else "Employees" if "mploy" in c else "Shareholders" if "hareholder" in c else "Total" if c.strip().lower() == "total" else None)
+        if short:
+            keep.append((short, float(t)))
+    if not keep:
+        return _layout(go.Figure(), "Subscription by category (not available yet)", height=260, legend=False)
+    names, vals = zip(*keep)
+    fig = go.Figure(go.Bar(y=list(names), x=list(vals), orientation="h",
+                           marker=dict(color=[S[1] if n == "Total" else S[0] for n in names], cornerradius=4),
+                           text=[f"{v:.2f}×" for v in vals], textposition="outside", textfont=dict(color=TEXT, size=12),
+                           hovertemplate="%{y}: %{x:.2f}× subscribed<extra></extra>"))
+    fig.add_vline(x=1, line=dict(color=MUTED, width=1, dash="dash"), annotation_text="1× = fully subscribed",
+                  annotation_position="bottom right", annotation_font=dict(color=MUTED, size=10))
+    fig.update_yaxes(autorange="reversed")
+    fig.update_xaxes(title_text="times subscribed", range=[0, max(vals) * 1.25 + 0.5])
+    return _layout(fig, "Subscription by investor category (NSE + BSE)", height=120 + 42 * len(keep), legend=False)
+
+
+def ipo_listing_history(recent: pd.DataFrame) -> go.Figure:
+    d = recent.sort_values("listing_date").tail(20)
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=d["symbol"], y=d["listing_gain_pct"], name="Listing-day gain (open vs issue)",
+                         marker=dict(color=S[0], cornerradius=4)))
+    fig.add_trace(go.Bar(x=d["symbol"], y=d["return_since_ipo_pct"], name="Return since IPO (today)",
+                         marker=dict(color=S[1], cornerradius=4)))
+    fig.add_hline(y=0, line=dict(color=GRID, width=1))
+    fig.update_layout(barmode="group", bargroupgap=0.08)
+    fig.update_yaxes(title_text="% vs issue price")
+    return _layout(fig, "Recent mainboard IPOs: listing-day gain vs return since IPO", height=360)
+
+
+def ipo_financials(table: list[dict[str, Any]]) -> go.Figure:
+    d = pd.DataFrame(table)
+    if d.empty:
+        return _layout(go.Figure(), "Financials (not extracted)", height=260, legend=False)
+    fig = go.Figure()
+    for i, (c, lbl) in enumerate((("revenue_cr", "Revenue"), ("pat_cr", "Net profit"), ("net_worth_cr", "Net worth"), ("borrowings_cr", "Borrowings"))):
+        if c in d and d[c].notna().any():
+            fig.add_trace(go.Bar(x=d["period"], y=d[c], name=lbl, marker=dict(color=S[i], cornerradius=4),
+                                 text=[f"{v:,.0f}" if pd.notna(v) else "" for v in d[c]], textposition="outside",
+                                 textfont=dict(color=MUTED, size=10)))
+    fig.update_layout(barmode="group", bargroupgap=0.08)
+    fig.update_yaxes(title_text="₹ crore")
+    return _layout(fig, "Restated financials from the prospectus (₹ crore; stub periods are not annualised)", height=360)

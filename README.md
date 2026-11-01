@@ -28,6 +28,7 @@ powered by the same engine.
 | **Ratings by horizon** | Model rating (Strong Buy → Strong Sell) for **1 week, 4 weeks, 3 months, 6 months, 1 year and long term**, each built from the evidence that matters at that horizon (trend & breakouts short-term → earnings momentum → fundamentals & valuation long-term), with confidence, a best-fit-horizon suggestion, entry zone / stop / targets / reward-risk, and a **historical check**: how often this stock actually rose after similar setups vs on any day |
 | **Levels & breakouts** | Support and resistance **zones** (price bands, not lines) and breakout patterns on **1H, 4H, 1D and 1W** — zone breakouts with volume confirmation & failed-breakout detection, consolidation ranges, ascending/descending/symmetrical triangles, wedges, channels, double tops/bottoms, trendline breaks, 52-week/all-time-high breakouts, Bollinger squeezes, NR7/inside bars — each with trigger, target and invalidation, drawn on the chart |
 | **News & results** | NSE exchange filings (tagged: results, orders, M&A, fund raising, promoter/pledge/SAST, ratings, management, legal), alerts for filings that need attention, next results date (event risk), board meetings, dividends/bonus/splits, Google News (India) headlines, latest quarterly results |
+| **IPO centre** | Every open and announced IPO on NSE (mainboard + SME) with price band, lot size, minimum investment, issue size, fresh issue vs offer-for-sale, lead managers and registrar · **live subscription by investor category** (QIB, NII, retail) · a rule-based listing-gain scorecard · the company's restated financials **read from the Red Herring Prospectus** (every figure checked against the prospectus text; P/E, margins, ROE, debt/equity and post-issue market cap computed in code) · an AI view with three verdicts: **apply for listing gains**, **short-term holding** and **long-term holding** · how recent IPOs listed and have done since |
 | **Stock universe** | All ~750 Nifty Total Market stocks classified by **NSE sector, finer industry, market-cap bucket (large/mid/small/micro) and index membership**; filter and browse as a sector → industry → stock map |
 | **Peers** | Same-industry companies (NSE classification) on a P/E vs ROE bubble map + table |
 | **AI report** | Verdict, health, fundamentals, valuation, technical view per timeframe, bull/bear case, catalysts, India-specific risks, what would change the view, quarterly checklist, data gaps · every claim tagged **[DATA] / [INFERENCE] / [ASSUMPTION]** · **number audit** flags any figure the AI wrote that is not in the data · download as HTML (with charts) or Markdown |
@@ -40,8 +41,8 @@ powered by the same engine.
 | ![](docs/screenshots/trend_matrix.png) | ![](docs/screenshots/fundamentals.png) | ![](docs/screenshots/peers.png) |
 | **Ratings by horizon** | **Horizons & historical check** | **Levels & breakouts** |
 | ![](docs/screenshots/horizon_ratings.png) | ![](docs/screenshots/horizons_plan.png) | ![](docs/screenshots/levels_breakouts.png) |
-| **News & results** | **Stock universe** | |
-| ![](docs/screenshots/news_results.png) | ![](docs/screenshots/stock_universe.png) | |
+| **News & results** | **Stock universe** | **IPO centre** |
+| ![](docs/screenshots/news_results.png) | ![](docs/screenshots/stock_universe.png) | ![](docs/screenshots/ipo_centre.png) |
 
 *Screenshots use live data (Yahoo Finance, NSE, Google News) from 2 Nov 2026 and are illustrations, not views on any stock.*
 
@@ -178,6 +179,7 @@ Model names change often, so the app lists them live from each provider (**Load 
 | Exchange filings, board meetings, corporate actions | NSE public APIs | NSE blocks some cloud/datacenter IPs — works from home/office connections; the app says when a feed failed |
 | News headlines | Google News RSS (India edition) | headlines only; aggregator numbers can conflict — filings come first |
 | Industry / cap classification | NSE index files + Yahoo industry, snapshot in `data/classification.csv` | refresh with `python -m isa.cli refresh-classification` (~10 min) |
+| IPOs: issues, subscription, prospectus | NSE public IPO APIs + NSE archives (RHP) | SME issues listed only on BSE are not covered; grey-market premium (GMP) is deliberately excluded — unofficial and unverifiable |
 | Shareholding / promoter pledge | **not available** as numbers | pledge/SAST *filings* are flagged from NSE announcements | Yahoo "insiders %" is shown only as a promoter proxy — check NSE/BSE shareholding filings |
 | Bank metrics (NIM, GNPA, CASA, CAR) | **not available** | bank scores use ROE/ROA/growth/P/B only |
 

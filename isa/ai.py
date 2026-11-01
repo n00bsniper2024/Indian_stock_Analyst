@@ -94,3 +94,58 @@ def audit_numbers(report: dict[str, Any], pack: dict[str, Any]) -> dict[str, Any
     uniq = sorted(set(unverified), key=unverified.index)
     return {"figures_checked": checked, "unverified": uniq[:25], "unverified_count": len(unverified),
             "traced_pct": round(100 * (1 - len(unverified) / checked), 1) if checked else None}
+
+
+# --------------------------------------------------------------------------- IPO
+def ipo_excerpts(rhp: dict[str, Any], budget: int = 90000) -> str:
+    order = ["financial_summary", "basis_price", "capital_structure", "objects", "business", "mdna", "risk_factors",
+             "industry", "litigation", "summary_doc"]
+    parts, used = [], 0
+    for k in order:
+        sec = rhp.get("sections", {}).get(k)
+        if not sec:
+            continue
+        chunk = f"\n\n### [{k} | PDF pages {sec['pdf_pages']}]\n{sec['text']}"
+        if used + len(chunk) > budget:
+            chunk = chunk[: max(0, budget - used)]
+        parts.append(chunk)
+        used += len(chunk)
+        if used >= budget:
+            break
+    return "".join(parts)
+
+
+def extract_ipo_financials(company: str, rhp: dict[str, Any], provider: str, api_key: str, model: str,
+                           base_url: str | None = None) -> dict[str, Any]:
+    from .ipo import verify_numbers
+
+    excerpts = ipo_excerpts(rhp)
+    msgs = [{"role": "system", "content": "You extract data from Indian IPO prospectuses with exact fidelity. Output JSON only."},
+            {"role": "user", "content": _prompt("ipo_extract.md").format(company=company, excerpts=excerpts)}]
+    raw = chat(provider, api_key, model, msgs, json_mode=True, temperature=0.0, max_tokens=6000, base_url=base_url)
+    try:
+        ex = parse_json(raw)
+    except Exception:
+        return {"_parse_error": True, "_raw": raw[:2000]}
+    ex["_verification"] = verify_numbers({k: v for k, v in ex.items() if not k.startswith("_")}, excerpts)
+    return ex
+
+
+def generate_ipo_analysis(pack: dict[str, Any], provider: str, api_key: str, model: str, base_url: str | None = None) -> dict[str, Any]:
+    import json
+
+    ipo = pack["ipo"]
+    slim = json.loads(json.dumps(pack, default=str))
+    ver = slim.get("rhp_extract", {}).pop("_verification", None)
+    if ver:
+        slim["extraction_check"] = ver
+    user = _prompt("ipo_analysis.md").format(company=ipo["company"], symbol=ipo["symbol"], board=ipo["board"],
+                                             fact_pack=json.dumps(slim, ensure_ascii=False, separators=(",", ":")))
+    msgs = [{"role": "system", "content": _prompt("system_ipo.md")}, {"role": "user", "content": user}]
+    raw = chat(provider, api_key, model, msgs, json_mode=True, temperature=0.2, max_tokens=7000, base_url=base_url)
+    try:
+        rep = parse_json(raw)
+    except Exception:
+        return {"_raw": raw, "_parse_error": True}
+    rep["_audit"] = audit_numbers(rep, slim)
+    return rep
