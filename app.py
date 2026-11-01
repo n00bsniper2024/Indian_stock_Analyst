@@ -21,6 +21,7 @@ from isa.config import DEMO_MODE, ValuationDefaults
 from isa.data import get_batch_prices, get_peer_info, get_stock, resample_ohlcv
 from isa.fundamentals import annual_table, quarterly_table
 from isa.llm import PROVIDERS, LLMError, default_key, list_models, stream_chat
+from isa.keystore import mask, remove_key, save_key
 from isa.overview import breadth, category_snapshot
 from isa.report import DISCLAIMER, to_html, to_markdown
 from isa.classify import load_classification
@@ -64,6 +65,9 @@ st.markdown(
     .card{background:#1f1f1d;border:1px solid #2c2c29;border-radius:12px;padding:14px 18px;margin-bottom:12px}
     .verdict{font-size:1.05rem;border-left:4px solid #3987e5}
     .flag{color:#f2a0a0} .ok{color:#7fd67f}
+
+    /* ---- never let a typed key be revealed on screen ---- */
+    button[aria-label="Show password"], button[aria-label="Hide password"]{display:none !important}
 
     /* ---- tabs as buttons: wrap onto a second row instead of scrolling sideways ---- */
     [role="tablist"]{flex-wrap:wrap;gap:8px;overflow:visible !important;padding:4px 0 10px 0;border-bottom:1px solid #2c2c29}
@@ -200,8 +204,39 @@ with st.sidebar:
         base_url = st.text_input("Ollama URL", value=p.base_url or "")
     api_key = ""
     if p.env_key:
-        api_key = st.text_input(f"API key ({p.env_key})", value=default_key(provider), type="password",
-                                help="Kept only in this browser session. Put it in .env to avoid re-typing.")
+        wkey, skey = f"key_in::{provider}", f"key_session::{provider}"
+
+        def _take_key(env_name: str = p.env_key, wkey: str = wkey, skey: str = skey) -> None:
+            val = (st.session_state.get(wkey) or "").strip()
+            if val:
+                if st.session_state.get("remember_key", True):
+                    save_key(env_name, val)          # stored server-side in .env (chmod 600)
+                    st.session_state.pop(skey, None)
+                else:
+                    st.session_state[skey] = val     # this browser tab only
+            st.session_state[wkey] = ""              # never keep the key in the visible box
+
+        saved = default_key(provider)
+        session_val = st.session_state.get(skey, "")
+        api_key = session_val or saved
+        if saved and not session_val:
+            st.success(f"🔒 {provider} key saved on this server ({mask(saved)})", icon=None)
+            c1, c2 = st.columns(2)
+            if c2.button("Remove", key=f"rm::{provider}", width="stretch",
+                         help="Delete the saved key from this server's .env file"):
+                remove_key(p.env_key)
+                st.rerun()
+            with c1.popover("Replace", width="stretch"):
+                st.text_input("New API key", type="password", key=wkey, on_change=_take_key, placeholder="paste and press Enter")
+        else:
+            if session_val:
+                st.info(f"Using a key for this browser tab only ({mask(session_val)}).")
+            st.text_input(f"API key ({p.env_key})", type="password", key=wkey, on_change=_take_key,
+                          placeholder="paste your key and press Enter",
+                          help="The key is stored on the server, never shown again in the browser.")
+            st.checkbox("Remember on this server", value=True, key="remember_key",
+                        help="Saves the key in the project's .env file (readable only by your user). "
+                             "Untick to keep it for this browser tab only.")
         if p.key_url:
             st.caption(f"[Get a {provider} key]({p.key_url})")
     mk = f"models::{provider}"
@@ -456,18 +491,11 @@ def ipo_view() -> None:
       .verdict-card .h{color:#a3a29a;font-size:.85rem} .verdict-card .v{font-size:1.2rem;font-weight:800;margin:4px 0}
     </style>""", unsafe_allow_html=True)
     try:
-        ipos = cached_ipo_list()
+        with st.spinner("⏳ Loading open and upcoming IPOs from NSE… (first load takes ~10 seconds, then it's cached)", show_time=True):
+            ipos = cached_ipo_list()
     except Exception as e:
         st.error(f"Could not load IPOs from NSE: {e}")
         return
-    recent = cached_recent_listings()
-    mood = ipo_mod.market_mood(recent)
-    if mood.get("available"):
-        m = st.columns(4)
-        m[0].metric("Median listing gain (last 10)", f"{mood['median_listing_gain_pct_last10']:+.1f}%")
-        m[1].metric("Listed above issue price (last 10)", f"{mood['pct_listed_above_issue_last10']:.0f}%")
-        m[2].metric(f"Trading above issue now (last {mood['listings_considered']})", f"{mood['pct_trading_above_issue_now']:.0f}%")
-        m[3].metric("Median return since IPO", f"{mood['median_return_since_ipo_pct']:+.1f}%")
     if not ipos:
         st.info("No open or announced IPOs on NSE right now.")
     else:
@@ -479,8 +507,17 @@ def ipo_view() -> None:
             sym = st.pills("Open an IPO for full details and AI analysis", list(labels), format_func=lambda s: labels[s],
                            default=shown[0]["symbol"], key="ipo_pick") or shown[0]["symbol"]
             ipo_detail_view(next(c for c in shown if c["symbol"] == sym))
+    st.markdown("### 📈 How recent IPOs have done")
+    with st.spinner("⏳ Loading how recent IPOs have performed…", show_time=True):
+        recent = cached_recent_listings()
+    mood = ipo_mod.market_mood(recent)
+    if mood.get("available"):
+        m = st.columns(4)
+        m[0].metric("Median listing gain (last 10)", f"{mood['median_listing_gain_pct_last10']:+.1f}%")
+        m[1].metric("Listed above issue price (last 10)", f"{mood['pct_listed_above_issue_last10']:.0f}%")
+        m[2].metric(f"Trading above issue now (last {mood['listings_considered']})", f"{mood['pct_trading_above_issue_now']:.0f}%")
+        m[3].metric("Median return since IPO", f"{mood['median_return_since_ipo_pct']:+.1f}%")
     if not recent.empty:
-        st.markdown("### 📈 How recent IPOs have done")
         st.plotly_chart(charts.ipo_listing_history(recent), width="stretch")
         with st.expander("Table of recent mainboard listings"):
             st.dataframe(recent, hide_index=True, width="stretch")
@@ -492,7 +529,8 @@ def ipo_detail_view(card: dict) -> None:
     sym = card["symbol"]
     ex = st.session_state.get(f"ipo_ex::{sym}") or _load_ai("extract", sym)
     try:
-        pack = cached_ipo_pack(sym, json.dumps(ex, default=str) if ex else None)
+        with st.spinner(f"⏳ Loading issue details and live subscription for {card['company']}…", show_time=True):
+            pack = cached_ipo_pack(sym, json.dumps(ex, default=str) if ex else None)
     except Exception as e:
         st.error(f"Could not load issue details: {e}")
         return
@@ -1283,11 +1321,18 @@ def stock_analysis() -> None:
                 st.markdown(f"- [{esc(n['title'])}]({n['url']}) — {esc(n['publisher'])} {n['date']}" if n.get("url") else f"- {esc(n['title'])}")
 
 
-if view == VIEWS[0]:
-    stock_analysis()
-elif view == VIEWS[1]:
-    market_overview()
-elif view == VIEWS[2]:
-    universe_view()
-else:
-    ipo_view()
+# All page content lives in one slot. When the user switches view, the slot is cleared at once so the old page
+# doesn't linger (faded) while the new one loads.
+_slot = st.empty()
+if st.session_state.get("_last_view") != view:
+    _slot.empty()
+    st.session_state["_last_view"] = view
+with _slot.container():
+    if view == VIEWS[0]:
+        stock_analysis()
+    elif view == VIEWS[1]:
+        market_overview()
+    elif view == VIEWS[2]:
+        universe_view()
+    else:
+        ipo_view()

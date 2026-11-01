@@ -142,8 +142,10 @@ Demo mode uses synthetic data (clearly labelled) so you can explore the interfac
 ## Adding your AI key
 
 1. Get a key from your chosen provider (links below).
-2. Either paste it into the sidebar (kept only for that browser session), **or** open the `.env` file in the project
-   folder and fill in the matching line, e.g. `DEEPSEEK_API_KEY=sk-...`, then restart.
+2. Paste it into the sidebar and press **Enter**. With **Remember on this server** ticked (default) it is saved in the
+   project's `.env` file (readable only by your user) and survives refreshes and restarts. The browser only ever shows
+   the last 4 characters; use **Replace** or **Remove** in the sidebar to change it. Untick the box to keep a key for
+   the current browser tab only.
 3. In the sidebar click **Load models**, pick a model, open a stock, go to **🤖 AI report → Generate**.
 
 `.env` is git-ignored — never commit keys or paste them into issues.
