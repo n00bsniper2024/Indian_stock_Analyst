@@ -24,6 +24,7 @@ from isa.llm import PROVIDERS, LLMError, default_key, list_models, stream_chat
 from isa.keystore import mask, remove_key, save_key
 from isa.overview import breadth, category_snapshot
 from isa.report import DISCLAIMER, to_html, to_markdown
+from isa import search as stock_search
 from isa.classify import load_classification
 from isa import ipo as ipo_mod
 from isa.ai import extract_ipo_financials, generate_ipo_analysis
@@ -396,6 +397,7 @@ def market_overview() -> None:
             sym = snap.iloc[rows[0]]["Symbol"]
             def _jump(s: str = sym) -> None:
                 st.session_state["symbol"] = s
+                st.session_state["stock_query"] = s
                 st.session_state["view"] = VIEWS[0]
 
             st.button(f"🔎 Analyse {sym}", type="primary", on_click=_jump)
@@ -777,9 +779,45 @@ def stock_picker() -> str | None:
     default = st.session_state.get("symbol")
     idx = syms.index(default) if default in syms else 0
     choice = c1.selectbox("Stock", range(len(syms)), index=idx, format_func=lambda i: labels[i], key=f"st_pick_{name}")
-    typed = c2.text_input("…or any NSE symbol", value="" if default in syms else (default or ""), placeholder="e.g. IRCTC",
-                          help="Overrides the list while filled. Clear it to go back to the list.").strip().upper()
-    return typed or syms[choice]
+    typed = c2.text_input("…or search any NSE stock", key="stock_query", placeholder="name, symbol or old name — e.g. borosil, sbi",
+                          help="Not case sensitive. Matches company names, NSE symbols, old symbols and former names, "
+                               "common short forms (SBI, HUL, L&T, Zomato) and small spelling mistakes. "
+                               "Clear it to go back to the list.").strip()
+    if not typed:
+        return syms[choice]
+    return search_pick(typed)
+
+
+def search_pick(typed: str) -> str | None:
+    """Turn free text into one NSE symbol; asks the user to pick when the text fits several companies."""
+    try:
+        matches = stock_search.search(typed, limit=8)
+    except Exception:
+        matches = []
+    if not matches:  # list unavailable or nothing similar: try the text as a raw symbol, the old behaviour
+        raw = re.sub(r"[^A-Z0-9&\-]", "", typed.upper())
+        st.caption(f"No company name matched “{typed}”, trying it as an NSE symbol: `{raw}`")
+        return raw or None
+    best = stock_search.resolve(typed)
+    if best is not None and best.reason == "symbol":  # typed an exact current ticker: no question to ask
+        return best.symbol
+    by_sym = {m.symbol: m for m in matches}
+    if len(matches) == 1:
+        m = matches[0]
+        if m.reason != "symbol":
+            st.caption(f"Showing **{m.label}** ({m.reason}).")
+        return m.symbol
+    qkey = "srch_" + re.sub(r"[^a-z0-9]+", "_", typed.lower())
+    picked = st.pills("Which company did you mean?" if best is None else "Showing the closest match. Other matches:",
+                      [m.symbol for m in matches], format_func=lambda s: by_sym[s].label,
+                      default=best.symbol if best else None, key=qkey)
+    if not picked:
+        st.info(f"“{typed}” fits {len(matches)} companies. Click the one you want above.")
+        return None
+    m = by_sym[picked]
+    if m.reason not in ("symbol",) and (best is None or picked == best.symbol):
+        st.caption(f"Matched on {m.reason}.")
+    return picked
 
 
 def render_verdict(report: dict) -> None:
@@ -909,6 +947,13 @@ def stock_analysis() -> None:
             pack = cached_pack(symbol, rf, erp, tg, with_peers, g_override)
     except Exception as e:
         st.error(f"Could not analyse {symbol}: {e}")
+        try:
+            alts = [m for m in stock_search.search(symbol, limit=6) if m.symbol != symbol]
+        except Exception:
+            alts = []
+        if alts:
+            st.markdown("**Did you mean:** " + " · ".join(f"`{m.symbol}` {m.name}" for m in alts)
+                        + "  \nType any of these in the search box.")
         return
     st.session_state["symbol"] = symbol
     meta, sc, tech, fund, val = pack["meta"], pack["scores"], pack["technical"], pack["fundamentals"], pack["valuation"]

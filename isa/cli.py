@@ -16,6 +16,27 @@ import sys
 from .analysis import build_fact_pack, fact_pack_json
 
 
+def _resolve_symbol(text: str) -> str | None:
+    """Accept names, old symbols and small typos; stop and list choices when the text fits several companies."""
+    from .search import resolve, search
+
+    try:
+        best = resolve(text)
+        if best:
+            if best.reason != "symbol":
+                print(f"using {best.label} ({best.reason})", file=sys.stderr)
+            return best.symbol
+        matches = search(text)
+    except Exception:
+        matches = []
+    if not matches:
+        return text.strip().upper()
+    print(f"'{text}' fits several companies; run again with one of:", file=sys.stderr)
+    for m in matches:
+        print(f"  {m.label}", file=sys.stderr)
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="isa", description="Indian Stock Analyst engine")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -34,6 +55,10 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--model", required=True)
     r.add_argument("--out")
     args = ap.parse_args(argv)
+    if getattr(args, "symbol", None):
+        args.symbol = _resolve_symbol(args.symbol)
+        if not args.symbol:
+            return 2
 
     if args.cmd == "analyze":
         pack = build_fact_pack(args.symbol, with_peers=not args.no_peers)
