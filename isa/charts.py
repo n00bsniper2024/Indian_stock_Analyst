@@ -13,14 +13,17 @@ from plotly.subplots import make_subplots
 
 from .technicals import add_indicators
 
-SURFACE = "#1a1a19"
-PANEL = "#222220"
-GRID = "#33332f"
-TEXT = "#f0efec"
-MUTED = "#a3a29a"
-S = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"]
-UP, DOWN, NEUTRAL, WARN = "#0ca30c", "#d03b3b", "#383835", "#fab219"
-FONT = "Inter, Segoe UI, system-ui, sans-serif"
+# Palette from isa.theme (dark fintech): charts sit on transparent backgrounds inside glass cards.
+SURFACE = "rgba(0,0,0,0)"
+PANEL = "#111a2e"
+GRID = "rgba(148,163,184,0.13)"
+TEXT = "#e2e8f0"
+MUTED = "#94a3b8"
+S = ["#6366f1", "#22d3ee", "#f59e0b", "#a855f7", "#22c55e", "#ec4899", "#38bdf8", "#f97316"]
+UP, DOWN, NEUTRAL, WARN = "#22c55e", "#ef4444", "#334155", "#f59e0b"
+# Darker fills for cells that carry white text (keeps text contrast >= 4.5:1)
+UP_FILL, DOWN_FILL = "#15803d", "#b91c1c"
+FONT = "Fira Sans, Inter, Segoe UI, system-ui, sans-serif"
 
 
 def _layout(fig: go.Figure, title: str | None = None, height: int = 380, legend: bool = True) -> go.Figure:
@@ -55,7 +58,7 @@ def price_chart(df: pd.DataFrame, title: str, intraday: bool = False, show: dict
     if show.get("Bollinger", False):
         fig.add_trace(go.Scatter(x=x.index, y=x["BB_up"], name="Bollinger", line=dict(color=MUTED, width=1, dash="dot")), 1, 1)
         fig.add_trace(go.Scatter(x=x.index, y=x["BB_low"], name="Bollinger low", line=dict(color=MUTED, width=1, dash="dot"),
-                                 fill="tonexty", fillcolor="rgba(163,162,154,0.06)", showlegend=False), 1, 1)
+                                 fill="tonexty", fillcolor="rgba(148,163,184,0.06)", showlegend=False), 1, 1)
     if show.get("Supertrend", True):
         st_up = x["Supertrend"].where(x["ST_dir"] > 0)
         st_dn = x["Supertrend"].where(x["ST_dir"] < 0)
@@ -112,7 +115,7 @@ def trend_matrix(timeframes: list[dict[str, Any]]) -> go.Figure:
         text.append(tr)
     fig = go.Figure(go.Heatmap(z=z, x=cols, y=[t["timeframe"] for t in tfs], text=text, texttemplate="%{text}",
                                textfont=dict(size=11, color=TEXT), zmin=-1, zmax=1, xgap=2, ygap=2, showscale=False,
-                               colorscale=[[0, DOWN], [0.5, NEUTRAL], [1, UP]], hovertemplate="%{y} · %{x}: %{text}<extra></extra>"))
+                               colorscale=[[0, DOWN_FILL], [0.5, NEUTRAL], [1, UP_FILL]], hovertemplate="%{y} · %{x}: %{text}<extra></extra>"))
     fig.update_yaxes(autorange="reversed")
     return _layout(fig, "Multi-timeframe trend matrix", height=90 + 52 * len(tfs), legend=False)
 
@@ -120,8 +123,8 @@ def trend_matrix(timeframes: list[dict[str, Any]]) -> go.Figure:
 def gauge(value: float | None, title: str, lo: float = 0, hi: float = 100, suffix: str = "") -> go.Figure:
     v = 0 if value is None else value
     span = hi - lo
-    steps = [dict(range=[lo, lo + span * 0.3], color="#3a2120"), dict(range=[lo + span * 0.3, lo + span * 0.6], color="#2c2c29"),
-             dict(range=[lo + span * 0.6, hi], color="#1d3320")]
+    steps = [dict(range=[lo, lo + span * 0.3], color="rgba(239,68,68,0.18)"), dict(range=[lo + span * 0.3, lo + span * 0.6], color="rgba(148,163,184,0.10)"),
+             dict(range=[lo + span * 0.6, hi], color="rgba(34,197,94,0.18)")]
     bar = UP if (v - lo) / span >= 0.6 else DOWN if (v - lo) / span < 0.3 else WARN
     fig = go.Figure(go.Indicator(mode="gauge" if value is None else "gauge+number", value=v,
                                  number=dict(suffix=suffix, font=dict(size=34, color=TEXT)),
@@ -139,7 +142,7 @@ def radar(components: dict[str, float | None], title: str = "Health profile") ->
         return _layout(go.Figure(), title + " (insufficient data)", height=360, legend=False)
     k, v = zip(*items)
     fig = go.Figure(go.Scatterpolar(r=list(v) + [v[0]], theta=list(k) + [k[0]], fill="toself", line=dict(color=S[0], width=2),
-                                    fillcolor="rgba(57,135,229,0.25)", marker=dict(size=8), hovertemplate="%{theta}: %{r:.0f}/100<extra></extra>"))
+                                    fillcolor="rgba(99,102,241,0.28)", marker=dict(size=8), hovertemplate="%{theta}: %{r:.0f}/100<extra></extra>"))
     fig.update_layout(polar=dict(bgcolor=SURFACE, radialaxis=dict(range=[0, 100], gridcolor=GRID, tickfont=dict(color=MUTED, size=9)),
                                  angularaxis=dict(gridcolor=GRID, tickfont=dict(color=TEXT, size=11))))
     return _layout(fig, title, height=360, legend=False)
@@ -185,7 +188,7 @@ def dcf_heatmap(sens: dict[str, Any], price: float) -> go.Figure:
     lim = float(np.nanmax(np.abs(up))) if np.isfinite(up).any() else 50
     fig = go.Figure(go.Heatmap(z=up, x=[f"g {g}%" for g in sens["terminal_g_pct"]], y=[f"WACC {w}%" for w in sens["wacc_pct"]],
                                text=text, texttemplate="%{text}", textfont=dict(size=11, color=TEXT), zmid=0, zmin=-lim, zmax=lim,
-                               colorscale=[[0, DOWN], [0.5, NEUTRAL], [1, UP]], xgap=2, ygap=2,
+                               colorscale=[[0, DOWN_FILL], [0.5, NEUTRAL], [1, UP_FILL]], xgap=2, ygap=2,
                                colorbar=dict(title=dict(text="vs price %", font=dict(color=MUTED)), tickfont=dict(color=MUTED)),
                                hovertemplate="%{y}, %{x}: %{text}<extra></extra>"))
     fig.update_yaxes(autorange="reversed")
@@ -211,7 +214,7 @@ def football_field(ff: list[dict[str, Any]], price: float) -> go.Figure:
 
 def pe_band(band: pd.DataFrame, median: float, p25: float, p75: float) -> go.Figure:
     fig = go.Figure()
-    fig.add_hrect(y0=p25, y1=p75, fillcolor="rgba(57,135,229,0.12)", line_width=0)
+    fig.add_hrect(y0=p25, y1=p75, fillcolor="rgba(99,102,241,0.14)", line_width=0)
     fig.add_trace(go.Scatter(x=band.index, y=band["PE"], name="P/E", line=dict(color=S[0], width=2),
                              hovertemplate="%{x|%b %Y}: %{y:.1f}x<extra></extra>"))
     fig.add_hline(y=median, line=dict(color=S[1], width=1.5, dash="dash"), annotation_text=f"median {median:.1f}x",
@@ -268,7 +271,7 @@ def category_treemap(snap: pd.DataFrame, ret_col: str = "1D %", group: str | Non
         labels=d["label"].tolist() + sorted(d["Industry"].unique()),
         parents=d["Industry"].tolist() + [""] * d["Industry"].nunique(),
         values=d["size"].tolist() + [0] * d["Industry"].nunique(),
-        marker=dict(colors=d[ret_col].tolist() + [0] * d["Industry"].nunique(), colorscale=[[0, DOWN], [0.5, NEUTRAL], [1, UP]],
+        marker=dict(colors=d[ret_col].tolist() + [0] * d["Industry"].nunique(), colorscale=[[0, DOWN_FILL], [0.5, NEUTRAL], [1, UP_FILL]],
                     cmid=0, cmin=-lim, cmax=lim, line=dict(color=SURFACE, width=2), showscale=False),
         textfont=dict(color=TEXT, family=FONT), hovertemplate="%{label}<extra></extra>", branchvalues="remainder"))
     return _layout(fig, f"Category heatmap — colour = {ret_col} return, size = traded value", height=520, legend=False).update_layout(margin=dict(l=4, r=4, t=48, b=4))
@@ -281,14 +284,14 @@ def returns_heatmap(snap: pd.DataFrame, top: int = 40) -> go.Figure:
     lim = float(np.nanpercentile(np.abs(z), 95)) if np.isfinite(z).any() else 5
     fig = go.Figure(go.Heatmap(z=z, x=cols, y=d["Symbol"], text=[[f"{v:+.1f}" if np.isfinite(v) else "" for v in r] for r in z],
                                texttemplate="%{text}", textfont=dict(size=10, color=TEXT), zmid=0, zmin=-lim, zmax=lim,
-                               colorscale=[[0, DOWN], [0.5, NEUTRAL], [1, UP]], xgap=2, ygap=2, showscale=False,
+                               colorscale=[[0, DOWN_FILL], [0.5, NEUTRAL], [1, UP_FILL]], xgap=2, ygap=2, showscale=False,
                                hovertemplate="%{y} %{x}: %{z:+.2f}%<extra></extra>"))
     fig.update_yaxes(autorange="reversed")
     return _layout(fig, f"Returns across periods (top {len(d)} by traded value)", height=120 + 22 * len(d), legend=False)
 
 
 # =========================================================================== zones, breakouts, horizons
-RATING_COLORS = {"Strong Buy": "#0ca30c", "Buy": "#6cc56c", "Neutral": "#8a8980", "Sell": "#ec835a", "Strong Sell": "#d03b3b"}
+RATING_COLORS = {"Strong Buy": "#22c55e", "Buy": "#86efac", "Neutral": "#94a3b8", "Sell": "#fb923c", "Strong Sell": "#ef4444"}
 
 
 def zones_chart(df: pd.DataFrame, tf: dict[str, Any], title: str, intraday: bool, bars: int = 160) -> go.Figure:
@@ -303,11 +306,11 @@ def zones_chart(df: pd.DataFrame, tf: dict[str, Any], title: str, intraday: bool
                          showlegend=False, name="Volume"), 2, 1)
     z = tf.get("zones", {})
     for i, s in enumerate(z.get("supports", [])):
-        fig.add_hrect(y0=s["low"], y1=s["high"], fillcolor="rgba(12,163,12,0.16)", line_width=0, row=1, col=1,
+        fig.add_hrect(y0=s["low"], y1=s["high"], fillcolor="rgba(34,197,94,0.16)", line_width=0, row=1, col=1,
                       annotation_text=f"S{i + 1} ₹{s['low']:,.0f}–{s['high']:,.0f} ({s['touches']}×)", annotation_position="bottom left",
                       annotation_font=dict(color=MUTED, size=10))
     for i, r in enumerate(z.get("resistances", [])):
-        fig.add_hrect(y0=r["low"], y1=r["high"], fillcolor="rgba(208,59,59,0.16)", line_width=0, row=1, col=1,
+        fig.add_hrect(y0=r["low"], y1=r["high"], fillcolor="rgba(239,68,68,0.16)", line_width=0, row=1, col=1,
                       annotation_text=f"R{i + 1} ₹{r['low']:,.0f}–{r['high']:,.0f} ({r['touches']}×)", annotation_position="top left",
                       annotation_font=dict(color=MUTED, size=10))
     first = str(d.index[0])[:16]
@@ -399,7 +402,9 @@ def ipo_listing_history(recent: pd.DataFrame) -> go.Figure:
     fig.add_hline(y=0, line=dict(color=GRID, width=1))
     fig.update_layout(barmode="group", bargroupgap=0.08)
     fig.update_yaxes(title_text="% vs issue price")
-    return _layout(fig, "Recent mainboard IPOs: listing-day gain vs return since IPO", height=360)
+    fig = _layout(fig, "Recent mainboard IPOs: listing-day gain vs return since IPO", height=380)
+    fig.update_layout(legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="right", x=1), margin=dict(t=78))
+    return fig
 
 
 def ipo_financials(table: list[dict[str, Any]]) -> go.Figure:

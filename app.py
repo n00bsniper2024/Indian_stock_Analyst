@@ -27,6 +27,8 @@ from isa.overview import breadth, category_snapshot
 from isa.report import DISCLAIMER, to_html, to_markdown
 from isa import search as stock_search
 from isa import scanner
+from isa import theme
+from isa.pulse import market_pulse
 from isa.classify import load_classification
 from isa import ipo as ipo_mod
 from isa.ai import extract_ipo_financials, generate_ipo_analysis
@@ -36,7 +38,10 @@ from isa.patterns import frames as tf_frames
 from isa.universe import CATEGORIES, flat_categories, industries_from_nifty500, load_all_equities, load_index
 from isa.valuation import pe_band, peer_table, valuation_summary
 
-st.set_page_config(page_title="Indian Stock Analyst", page_icon="📈", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Indian Stock Analyst", page_icon=":material/monitoring:", layout="wide", initial_sidebar_state="auto")
+
+
+st.markdown(theme.css(), unsafe_allow_html=True)
 
 
 def _require_password() -> None:
@@ -44,7 +49,7 @@ def _require_password() -> None:
     expected = os.getenv("ISA_PASSWORD", "")
     if not expected or st.session_state.get("_auth_ok"):
         return
-    st.markdown("## 📈 Indian Stock Analyst")
+    st.markdown(theme.brand(), unsafe_allow_html=True)
     with st.form("login"):
         entered = st.text_input("Password", type="password")
         ok = st.form_submit_button("Open dashboard")
@@ -59,52 +64,7 @@ def _require_password() -> None:
 
 _require_password()
 
-st.markdown(
-    """<style>
-    .block-container{padding-top:1.4rem;padding-bottom:2rem}
-    div[data-testid="stMetric"]{background:#1f1f1d;border:1px solid #2c2c29;border-radius:10px;padding:10px 14px}
-    div[data-testid="stMetricLabel"] p{color:#a3a29a}
-    div[data-testid="stMetricValue"]{font-size:1.45rem}
-    .card{background:#1f1f1d;border:1px solid #2c2c29;border-radius:12px;padding:14px 18px;margin-bottom:12px}
-    .verdict{font-size:1.05rem;border-left:4px solid #3987e5}
-    .flag{color:#f2a0a0} .ok{color:#7fd67f}
 
-    /* ---- never let a typed key be revealed on screen ---- */
-    button[aria-label="Show password"], button[aria-label="Hide password"]{display:none !important}
-
-    /* ---- tabs as buttons: wrap onto a second row instead of scrolling sideways ---- */
-    [role="tablist"]{flex-wrap:wrap;gap:8px;overflow:visible !important;padding:4px 0 10px 0;border-bottom:1px solid #2c2c29}
-    [data-testid="stTab"]{background:#1f1f1d;border:1px solid #3a3a36;border-radius:10px;padding:9px 16px !important;
-        margin:0 !important;height:auto;min-height:40px;cursor:pointer;transition:background .15s,border-color .15s}
-    [data-testid="stTab"] p{font-size:0.98rem !important;font-weight:600;color:#e4e3de;margin:0}
-    [data-testid="stTab"]:hover{border-color:#3987e5;background:#1f2a3a}
-    [data-testid="stTab"][aria-selected="true"]{background:#3987e5;border-color:#3987e5;box-shadow:0 2px 10px rgba(57,135,229,.35)}
-    [data-testid="stTab"][aria-selected="true"] p{color:#ffffff}
-    [data-testid="stTab"]:focus-visible{outline:2px solid #9ec5f4;outline-offset:2px}
-    .react-aria-SelectionIndicator{display:none !important}
-
-    /* ---- radio groups (sidebar views, timeframe pickers) as full-width buttons ---- */
-    [data-testid="stElementContainer"]:has(> [data-testid="stRadio"]), [data-testid="stRadio"]{width:100% !important}
-    [data-testid="stRadioGroup"]{gap:8px;width:100% !important}
-    [data-testid="stRadioGroup"][aria-orientation="vertical"]{display:flex;flex-direction:column}
-    [data-testid="stRadioGroup"] > div{width:100%}
-
-    /* ---- horizon rating cards: responsive grid that wraps instead of squashing text ---- */
-    .hz-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:10px}
-    .hz-card{background:#1f1f1d;border:1px solid #2c2c29;border-radius:12px;padding:12px 10px;text-align:center}
-    .hz-card .h{color:#a3a29a;font-size:.85rem} .hz-card .r{font-size:1.15rem;font-weight:700;white-space:nowrap}
-    .hz-card .s{color:#a3a29a;font-size:.8rem}
-    [data-testid="stRadioOption"]{width:100%;background:#1f1f1d;border:1px solid #3a3a36;border-radius:10px;
-        padding:10px 14px;cursor:pointer;transition:background .15s,border-color .15s}
-    [data-testid="stRadioOption"] > div > div:first-child{display:none}   /* hide the radio dot */
-    [data-testid="stRadioOption"] p{font-size:1rem !important;font-weight:600;color:#e4e3de;margin:0}
-    [data-testid="stRadioOption"]:hover{border-color:#3987e5;background:#1f2a3a}
-    [data-testid="stRadioOption"][data-selected="true"]{background:#3987e5;border-color:#3987e5;box-shadow:0 2px 10px rgba(57,135,229,.35)}
-    [data-testid="stRadioOption"][data-selected="true"] p{color:#ffffff}
-    [data-testid="stRadioOption"]:has(input:focus-visible){outline:2px solid #9ec5f4;outline-offset:2px}
-    </style>""",
-    unsafe_allow_html=True,
-)
 
 # --------------------------------------------------------------------------- cached loaders
 @st.cache_data(ttl=7 * 24 * 3600, show_spinner=False)
@@ -188,14 +148,14 @@ def fmt(v, suffix: str = "", nd: int = 1, prefix: str = "") -> str:
 
 
 # --------------------------------------------------------------------------- sidebar
-VIEWS = ["🔎 Stock analysis", "🚀 Breakout scanner", "🗺️ Market overview", "📚 Stock universe", "🆕 IPO centre"]
+VIEWS = [":material/search: Stock analysis", ":material/rocket_launch: Breakout scanner", ":material/public: Market overview", ":material/category: Stock universe", ":material/new_releases: IPO centre"]
 with st.sidebar:
-    st.markdown("## 📈 Indian Stock Analyst")
+    st.markdown(theme.brand(), unsafe_allow_html=True)
     if DEMO_MODE:
         st.warning("DEMO MODE — synthetic data. Unset ISA_DEMO to use live market data.")
     view = st.radio("View", VIEWS, label_visibility="collapsed", key="view")
 
-    st.markdown("### 🤖 AI engine")
+    st.markdown("### :material/smart_toy: AI engine")
     provider = st.selectbox("Provider", list(PROVIDERS), index=0, help="DeepSeek is cheapest; Gemini has a free tier; Claude is strongest at careful financial reasoning; Ollama runs locally for free.")
     p = PROVIDERS[provider]
     if p.note:
@@ -223,7 +183,7 @@ with st.sidebar:
         session_val = st.session_state.get(skey, "")
         api_key = session_val or saved
         if saved and not session_val:
-            st.success(f"🔒 {provider} key saved on this server ({mask(saved)})", icon=None)
+            st.success(f":material/lock: {provider} key saved on this server ({mask(saved)})", icon=None)
             c1, c2 = st.columns(2)
             if c2.button("Remove", key=f"rm::{provider}", width="stretch",
                          help="Delete the saved key from this server's .env file"):
@@ -253,13 +213,13 @@ with st.sidebar:
     model = st.selectbox("Model", models, index=0, accept_new_options=True,
                          help="Click 'Load models' to fetch the live list, or type a model id.")
 
-    st.markdown("### ⚙️ Valuation assumptions")
+    st.markdown("### :material/tune: Valuation assumptions")
     d = ValuationDefaults()
     rf = st.slider("Risk-free (10Y G-Sec) %", 5.0, 9.0, round(100 * d.risk_free, 2), 0.05) / 100
     erp = st.slider("Equity risk premium %", 4.0, 10.0, round(100 * d.equity_risk_premium, 2), 0.25) / 100
     tg = st.slider("Terminal growth %", 3.0, 8.0, round(100 * d.terminal_growth, 2), 0.25) / 100
     with_peers = st.toggle("Fetch peer comparison", value=True, help="Pulls ~8 same-industry peers from Yahoo (slower first time).")
-    if st.button("♻️ Refresh market data", width="stretch"):
+    if st.button(":material/refresh: Refresh market data", width="stretch"):
         st.cache_data.clear()
         st.rerun()
     st.caption(DISCLAIMER)
@@ -308,9 +268,9 @@ def with_classification(snap: pd.DataFrame) -> pd.DataFrame:
 
 # =========================================================================== UNIVERSE
 def universe_view() -> None:
-    st.title("📚 Stock universe")
-    st.caption("Every stock in the Nifty Total Market (~750: large, mid, small and micro caps) with NSE sector, finer industry, "
-               "market-cap bucket and index memberships. Filter, then select a row to analyse it.")
+    st.markdown(theme.hero("Stock universe", "Every stock in the Nifty Total Market (~750: large, mid, small and micro caps) with NSE "
+                           "sector, finer industry, market-cap bucket and index memberships. Filter, then select a row to analyse it.",
+                           "category", "Explore"), unsafe_allow_html=True)
     cls = cached_classification()
     c1, c2, c3, c4 = st.columns(4)
     sectors = c1.multiselect("Sector", sorted(cls["Sector"].dropna().unique()))
@@ -346,14 +306,15 @@ def universe_view() -> None:
     rows = ev.selection.rows if ev and hasattr(ev, "selection") else []
     if rows:
         sym = f.iloc[rows[0]]["Symbol"]
-        st.button(f"🔎 Analyse {sym}", type="primary", on_click=lambda s=sym: st.session_state.update(symbol=s, view=VIEWS[0]))
+        st.button(f":material/search: Analyse {sym}", type="primary", on_click=lambda s=sym: st.session_state.update(symbol=s, view=VIEWS[0]))
     st.caption("Cap buckets follow index membership (Nifty 100 / Midcap 150 / Smallcap 250 / Microcap 250), which mirrors "
                "SEBI-AMFI market-cap ranks. Industry detail is from Yahoo; refresh with `python -m isa.cli refresh-classification`.")
 
 
 # =========================================================================== MARKET OVERVIEW
 def market_overview() -> None:
-    st.title("🗺️ Market overview")
+    st.markdown(theme.hero("Market overview", "Heatmap, breadth and a screener for any NSE index, sector or theme. "
+                           "Select a row in the screener to open the full analysis.", "public", "Markets"), unsafe_allow_html=True)
     name, meta, src = category_picker("ov")
     if src == "fallback" and not DEMO_MODE:
         st.warning("Could not reach NSE for the constituent list — showing the bundled Nifty 50 snapshot instead.")
@@ -377,6 +338,20 @@ def market_overview() -> None:
     m[3].metric("In uptrend (daily)", f"{b['uptrend_share']:.0f}%")
     m[4].metric("Median 1M return", f"{b['median_1m']:+.1f}%")
     m[5].metric("Median 1Y return", f"{b['median_1y']:+.1f}%")
+    st.markdown(theme.MOVERS_CSS + theme.breadth_bar(b["advancers_1d"], b["decliners_1d"], max(0, b["stocks"] - b["advancers_1d"] - b["decliners_1d"])),
+                unsafe_allow_html=True)
+
+    def _rows(df: pd.DataFrame) -> list[dict]:
+        return [{"symbol": r["Symbol"], "name": r.get("Company", ""), "price": r["Price"], "chg": r["1D %"],
+                 "spark": prices[r["Symbol"]]["Close"].iloc[-30:].tolist() if r["Symbol"] in prices else []}
+                for _, r in df.iterrows()]
+
+    ranked = snap.dropna(subset=["1D %"]).sort_values("1D %", ascending=False)
+    k = min(5, len(ranked) // 2)
+    if k:
+        g1, g2 = st.columns(2)
+        g1.markdown(theme.movers("Top gainers today", _rows(ranked.head(k)), "north_east", theme.T["up"]), unsafe_allow_html=True)
+        g2.markdown(theme.movers("Top losers today", _rows(ranked.tail(k).iloc[::-1]), "south_east", theme.T["down"]), unsafe_allow_html=True)
     period = st.segmented_control("Heatmap period", ["1D %", "1W %", "1M %", "3M %", "1Y %"], default="1D %")
     st.plotly_chart(charts.category_treemap(snap, period or "1D %"), width="stretch")
     c1, c2 = st.columns([3, 2])
@@ -402,7 +377,7 @@ def market_overview() -> None:
                 st.session_state["stock_query"] = s
                 st.session_state["view"] = VIEWS[0]
 
-            st.button(f"🔎 Analyse {sym}", type="primary", on_click=_jump)
+            st.button(f":material/search: Analyse {sym}", type="primary", on_click=_jump)
     with c2:
         st.plotly_chart(charts.returns_heatmap(snap, top=25), width="stretch")
 
@@ -410,9 +385,9 @@ def market_overview() -> None:
 
 # =========================================================================== IPO CENTRE
 VERDICT_STYLE = {
-    "Apply": ("#0ca30c", "🟢"), "Apply with caution": ("#c98500", "🟡"), "Avoid": ("#d03b3b", "🔴"),
-    "Hold after listing": ("#0ca30c", "🟢"), "Wait and watch": ("#c98500", "🟡"),
-    "Good long-term candidate": ("#0ca30c", "🟢"), "Wait for a better price": ("#c98500", "🟡"),
+    "Apply": ("#22c55e", ""), "Apply with caution": ("#f59e0b", ""), "Avoid": ("#ef4444", ""),
+    "Hold after listing": ("#22c55e", ""), "Wait and watch": ("#f59e0b", ""),
+    "Good long-term candidate": ("#22c55e", ""), "Wait for a better price": ("#f59e0b", ""),
 }
 
 
@@ -461,14 +436,14 @@ def _save_ai(kind: str, symbol: str, data: dict) -> None:
 
 
 def _ipo_card_html(c: dict) -> str:
-    status_col = {"Open": "#0ca30c", "Upcoming": "#3987e5", "Closed": "#8a8980"}.get(c["status"], "#8a8980")
-    board_col = "#9085e9" if c["board"] == "SME" else "#199e70"
+    status_col = {"Open": "#16a34a", "Upcoming": "#4f46e5", "Closed": "#475569"}.get(c["status"], "#475569")
+    board_col = "#7c3aed" if c["board"] == "SME" else "#0e7490"
     sub = f"{c['subscription_x']:.2f}×" if c.get("subscription_x") is not None else "—"
     band = f"₹{c['price_low']:,.0f}–{c['price_high']:,.0f}" if c.get("price_high") else (c.get("price_band") or "—")
     lot = f"{c['lot_size']:,.0f} sh" if c.get("lot_size") else "—"
     mininv = f"₹{c['lot_size'] * c['price_high']:,.0f}" if c.get("lot_size") and c.get("price_high") else "—"
-    return (f"<div class='ipo-card'><div class='ipo-top'><span class='pill' style='background:{status_col}'>{c['status']}</span>"
-            f"<span class='pill' style='background:{board_col}'>{c['board']}</span></div>"
+    return (f"<div class='ipo-card'><div class='ipo-top'><span class='ipo-pill' style='background:{status_col}'>{c['status']}</span>"
+            f"<span class='ipo-pill' style='background:{board_col}'>{c['board']}</span></div>"
             f"<div class='ipo-name'>{html_escape(c['company'])}</div><div class='ipo-sym'>{c['symbol']}</div>"
             f"<div class='ipo-grid'><span>Dates</span><b>{c['open']} → {c['close']}</b><span>Price band</span><b>{band}</b>"
             f"<span>Lot</span><b>{lot}</b><span>Min. 1 lot</span><b>{mininv}</b><span>Subscribed</span><b>{sub}</b></div></div>")
@@ -504,17 +479,17 @@ def cached_scan_features(years: int, tag: str, _hist: dict) -> dict:
 
 
 def breakout_view() -> None:
-    st.title("🚀 Breakout scanner")
-    st.caption(
-        "Finds strong stocks pressing against their 20-day high **before** they close above it, then tests how often "
-        "that actually led to a breakout. A model screen, not a recommendation: on 2024–26 data the default rules "
-        "broke out within 10 sessions ~70% of the time and gave a clean breakout ~1 time in 3. Two in three still fail or stall."
-    )
+    st.markdown(theme.hero(
+        "Breakout scanner",
+        "Strong stocks pressing against their 20-day high <b>before</b> they close above it, plus a test of how often that "
+        "actually led to a breakout. A model screen, not a recommendation: on 2024–26 data the default rules broke out within "
+        "10 sessions ~70% of the time and cleanly ~1 time in 3. Two in three still fail or stall.",
+        "rocket_launch", "Pre-breakout screen"), unsafe_allow_html=True)
     if "bs_near_pivot_pct" not in st.session_state:
         st.session_state["bs_preset"] = list(scanner.PRESETS)[0]
         _apply_preset()
     meta = scanner.universe()
-    with st.expander("⚙️ Rules", expanded=False):
+    with st.expander(":material/tune: Rules", expanded=False):
         st.selectbox("Preset", list(scanner.PRESETS), key="bs_preset", on_change=_apply_preset)
         cols = st.columns(4)
         vals = {}
@@ -543,7 +518,7 @@ def breakout_view() -> None:
         with gate.container():
             st.info(f"The scan downloads {years} years of daily prices for all {len(meta)} Nifty Total Market stocks. "
                     "The first run takes a few minutes; after that it is cached and refreshes the latest prices every 15 minutes.")
-            go_now = st.button("▶️ Load prices and scan", type="primary")
+            go_now = st.button("Load prices and scan", type="primary", icon=":material/play_arrow:")
         if not go_now:
             return
         gate.empty()
@@ -566,7 +541,7 @@ def breakout_view() -> None:
     f = {k: v[keep] for k, v in f_all.items()}
     today = scanner.scan_today(f, rules, meta)
     as_of = pd.Timestamp(f["c"].index[-1])
-    tab_a, tab_b, tab_c = st.tabs(["🎯 Today's candidates", "📊 How well do these rules work?", "📋 Chartink version"])
+    tab_a, tab_b, tab_c = st.tabs([":material/track_changes: Today's candidates", ":material/bar_chart: How well do these rules work?", ":material/content_paste: Chartink version"])
 
     with tab_a:
         m1, m2, m3 = st.columns(3)
@@ -600,7 +575,7 @@ def breakout_view() -> None:
             def _jump(s: str = sym) -> None:
                 st.session_state.update(symbol=s, stock_query=s, view=VIEWS[0])
 
-            st.button(f"🔎 Full analysis of {sym}", type="primary", on_click=_jump)
+            st.button(f":material/search: Full analysis of {sym}", type="primary", on_click=_jump)
 
     with tab_b:
         st.caption(
@@ -648,21 +623,21 @@ def breakout_view() -> None:
 
 
 def ipo_view() -> None:
-    st.title("🆕 IPO centre")
-    st.caption("Open and upcoming IPOs on NSE (mainboard and SME) with issue details, live subscription, financials read from "
-               "the Red Herring Prospectus, and an AI view for listing gains, short-term and long-term holding.")
+    st.markdown(theme.hero("IPO centre", "Open and upcoming IPOs on NSE (mainboard and SME) with issue details, live subscription, "
+                           "financials read from the Red Herring Prospectus, and an AI view for listing gains, short-term and "
+                           "long-term holding.", "new_releases", "Primary market"), unsafe_allow_html=True)
     st.markdown("""<style>
       .ipo-wrap{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin:6px 0 14px}
-      .ipo-card{background:#1f1f1d;border:1px solid #2c2c29;border-radius:12px;padding:14px}
+      .ipo-card{background:linear-gradient(180deg,rgba(30,41,59,.55),rgba(15,23,42,.55));border:1px solid rgba(148,163,184,.16);border-radius:16px;padding:14px;transition:transform .16s,border-color .16s}
+      .ipo-card:hover{transform:translateY(-2px);border-color:rgba(129,140,248,.45)}
       .ipo-top{display:flex;gap:6px;margin-bottom:6px}
-      .pill{color:#fff;font-size:.72rem;font-weight:700;padding:2px 9px;border-radius:999px}
-      .ipo-name{font-weight:700;font-size:1.02rem;line-height:1.3} .ipo-sym{color:#a3a29a;font-size:.8rem;margin-bottom:8px}
-      .ipo-grid{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:.86rem} .ipo-grid span{color:#a3a29a}
-      .verdict-card{border-radius:12px;padding:14px 16px;background:#1f1f1d;border:1px solid #2c2c29;height:100%}
-      .verdict-card .h{color:#a3a29a;font-size:.85rem} .verdict-card .v{font-size:1.2rem;font-weight:800;margin:4px 0}
+      .ipo-pill{color:#fff;font-size:.72rem;font-weight:700;padding:2px 9px;border-radius:999px}
+      .ipo-name{font-weight:700;font-size:1.02rem;line-height:1.3;color:#f8fafc} .ipo-sym{color:#94a3b8;font-size:.8rem;margin-bottom:8px}
+      .ipo-grid{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:.86rem} .ipo-grid span{color:#94a3b8}
+      .ipo-grid b{font-family:'Fira Code',monospace;font-weight:500}
     </style>""", unsafe_allow_html=True)
     try:
-        with st.spinner("⏳ Loading open and upcoming IPOs from NSE… (first load takes ~10 seconds, then it's cached)", show_time=True):
+        with st.spinner(":material/hourglass_top: Loading open and upcoming IPOs from NSE… (first load takes ~10 seconds, then it's cached)", show_time=True):
             ipos = cached_ipo_list()
     except Exception as e:
         st.error(f"Could not load IPOs from NSE: {e}")
@@ -678,8 +653,8 @@ def ipo_view() -> None:
             sym = st.pills("Open an IPO for full details and AI analysis", list(labels), format_func=lambda s: labels[s],
                            default=shown[0]["symbol"], key="ipo_pick") or shown[0]["symbol"]
             ipo_detail_view(next(c for c in shown if c["symbol"] == sym))
-    st.markdown("### 📈 How recent IPOs have done")
-    with st.spinner("⏳ Loading how recent IPOs have performed…", show_time=True):
+    st.markdown("### :material/trending_up: How recent IPOs have done")
+    with st.spinner(":material/hourglass_top: Loading how recent IPOs have performed…", show_time=True):
         recent = cached_recent_listings()
     mood = ipo_mod.market_mood(recent)
     if mood.get("available"):
@@ -700,13 +675,15 @@ def ipo_detail_view(card: dict) -> None:
     sym = card["symbol"]
     ex = st.session_state.get(f"ipo_ex::{sym}") or _load_ai("extract", sym)
     try:
-        with st.spinner(f"⏳ Loading issue details and live subscription for {card['company']}…", show_time=True):
+        with st.spinner(f":material/hourglass_top: Loading issue details and live subscription for {card['company']}…", show_time=True):
             pack = cached_ipo_pack(sym, json.dumps(ex, default=str) if ex else None)
     except Exception as e:
         st.error(f"Could not load issue details: {e}")
         return
     ip, sub, sc = pack["ipo"], pack["subscription_x"], pack["listing_scorecard"]
-    st.markdown(f"## {html_escape(card['company'])} · `{sym}`")
+    st.markdown(theme.hero(card["company"], f"{card.get('status', '')} · {card.get('board', '')} · "
+                           f"{card.get('open') or ''} → {card.get('close') or ''}".strip(" ·→"),
+                           "description", f"IPO · {sym}"), unsafe_allow_html=True)
     m = st.columns(6)
     m[0].metric("Price band", f"₹{card['price_low']:,.0f}–{card['price_high']:,.0f}" if card.get("price_high") else "—")
     m[1].metric("Lot size", f"{ip['lot_size']:,.0f}" if ip.get("lot_size") else "—")
@@ -717,15 +694,15 @@ def ipo_detail_view(card: dict) -> None:
     if card["board"] == "SME":
         st.warning("SME IPO — small company, thin trading after listing and a large minimum ticket. Higher risk than mainboard IPOs.")
 
-    names = ["🤖 AI analysis", "📋 Issue details & scorecard", "📊 Subscription", "📑 Financials (from RHP)", "📎 Documents"]
+    names = [":material/smart_toy: AI analysis", ":material/content_paste: Issue details & scorecard", ":material/bar_chart: Subscription", ":material/description: Financials (from RHP)", ":material/attach_file: Documents"]
     T = dict(zip(names, st.tabs(names)))
 
-    with T["📋 Issue details & scorecard"]:
+    with T[":material/content_paste: Issue details & scorecard"]:
         c1, c2 = st.columns([2, 3])
         with c1:
             c1.plotly_chart(charts.gauge(sc.get("score"), f"Listing-gain signals · {sc.get('label')}"), width="stretch")
             for cv in sc.get("caveats", []):
-                st.caption("⚠️ " + cv)
+                st.caption(":material/warning: " + cv)
             st.caption(sc.get("note", ""))
         with c2:
             if sc.get("factors"):
@@ -737,17 +714,17 @@ def ipo_detail_view(card: dict) -> None:
                 ("Lead managers", ip.get("lead_managers")), ("Registrar", ip.get("registrar")), ("Discount", ip.get("discount"))]
         st.dataframe(pd.DataFrame([(k, v) for k, v in rows if v], columns=["Item", "Detail"]), hide_index=True, width="stretch")
 
-    with T["📊 Subscription"]:
+    with T[":material/bar_chart: Subscription"]:
         st.plotly_chart(charts.ipo_subscription(pack["subscription_by_category"]), width="stretch")
         st.caption(f"As of {pack['as_of']} (NSE updates through the day; final figures come after 5 pm on the closing day).")
         if pack["subscription_by_category"]:
             st.dataframe(pd.DataFrame(pack["subscription_by_category"]), hide_index=True, width="stretch")
 
-    with T["📑 Financials (from RHP)"]:
+    with T[":material/description: Financials (from RHP)"]:
         if not ex:
             st.info("Financials come from the Red Herring Prospectus. Click **Read prospectus** (uses your AI key once; "
                     "results are cached) — the AI copies the figures and the code verifies each one against the prospectus text.")
-            if st.button("📑 Read prospectus", key=f"rhp_{sym}", type="primary"):
+            if st.button(":material/description: Read prospectus", key=f"rhp_{sym}", type="primary"):
                 _run_extraction(card)
                 st.rerun()
         else:
@@ -791,10 +768,10 @@ def ipo_detail_view(card: dict) -> None:
                 _run_extraction(card)
                 st.rerun()
 
-    with T["🤖 AI analysis"]:
+    with T[":material/smart_toy: AI analysis"]:
         rep = st.session_state.get(f"ipo_rep::{sym}") or _load_ai("analysis", sym)
         c1, c2 = st.columns([1, 3])
-        go_ = c1.button("🤖 Generate IPO analysis", key=f"ipo_ai_{sym}", type="primary", width="stretch")
+        go_ = c1.button(":material/smart_toy: Generate IPO analysis", key=f"ipo_ai_{sym}", type="primary", width="stretch")
         c2.markdown(f"Engine: **{provider}** · model **{model or '—'}** — reads the prospectus first if needed (2 AI calls).")
         if go_ and PROVIDERS[provider].env_key and not api_key:
             st.error(f"Add your {provider} API key in the sidebar first (or put it in the .env file).")
@@ -820,7 +797,7 @@ def ipo_detail_view(card: dict) -> None:
             st.info("Click **Generate IPO analysis** for a detailed view of where the company stands, its fundamentals, "
                     "and suggestions for listing gains, short-term and long-term holding.")
 
-    with T["📎 Documents"]:
+    with T[":material/attach_file: Documents"]:
         if pack["documents"]:
             for k, v in pack["documents"].items():
                 st.markdown(f"- [{esc(k)}]({v})")
@@ -871,13 +848,13 @@ def render_ipo_report(rep: dict, card: dict) -> None:
 
     sg = rep.get("suggestions") or {}
     cols = st.columns(3)
-    for col, (k, lbl) in zip(cols, (("listing_gains", "🎯 Apply for listing gains"), ("short_term", "⏱️ Short-term holding (1–6 months)"),
-                                    ("long_term", "🌱 Long-term holding (2–3 years+)"))):
+    for col, (k, lbl) in zip(cols, (("listing_gains", ":material/track_changes: Apply for listing gains"), ("short_term", ":material/timer: Short-term holding (1–6 months)"),
+                                    ("long_term", ":material/eco: Long-term holding (2–3 years+)"))):
         s_ = sg.get(k) or {}
-        colr, icon = VERDICT_STYLE.get(s_.get("verdict", ""), ("#8a8980", "⚪"))
+        colr, _ = VERDICT_STYLE.get(s_.get("verdict", ""), ("#94a3b8", ""))
         with col:
             st.markdown(f"<div class='verdict-card' style='border-top:4px solid {colr}'><div class='h'>{lbl}</div>"
-                        f"<div class='v' style='color:{colr}'>{icon} {html_escape(s_.get('verdict', '—'))}</div>"
+                        f"<div class='v' style='color:{colr}'>{theme.dot(colr)} {html_escape(s_.get('verdict', '—'))}</div>"
                         f"<div class='h'>Confidence: {html_escape(s_.get('confidence', '—'))}</div></div>", unsafe_allow_html=True)
             bullets(s_.get("reasons") or s_.get("reason"))
 
@@ -891,30 +868,30 @@ def render_ipo_report(rep: dict, card: dict) -> None:
     st.markdown("---")
     c1, c2 = st.columns(2)
     with c1:
-        _sect("🏢 Where the company stands", rep.get("company_position"), miss)
+        _sect(":material/apartment: Where the company stands", rep.get("company_position"), miss)
         f = rep.get("fundamentals") or {}
-        st.markdown(f"#### 📊 Fundamentals — {f.get('assessment', '—')}")
+        st.markdown(f"#### :material/bar_chart: Fundamentals — {f.get('assessment', '—')}")
         for k, lbl in (("growth", "Growth"), ("profitability", "Profitability"), ("balance_sheet", "Balance sheet"), ("cash_flows", "Cash flows")):
             if f.get(k):
                 st.markdown(f"**{lbl}**")
                 bullets(f[k])
     with c2:
         v = rep.get("valuation") or {}
-        _sect(f"💰 Valuation — {v.get('assessment', '—')}", v.get("points") or v.get("summary"), miss)
-        _sect("🧾 Issue structure", rep.get("issue_structure"), miss)
-        _sect("📈 Demand (subscription)", rep.get("demand"), miss)
+        _sect(f":material/payments: Valuation — {v.get('assessment', '—')}", v.get("points") or v.get("summary"), miss)
+        _sect(":material/receipt_long: Issue structure", rep.get("issue_structure"), miss)
+        _sect(":material/trending_up: Demand (subscription)", rep.get("demand"), miss)
 
     st.markdown("---")
     c1, c2 = st.columns(2)
     with c1:
-        _sect("✅ Strengths", rep.get("strengths"), miss)
+        _sect(":material/check_circle: Strengths", rep.get("strengths"), miss)
     with c2:
-        _sect("⚠️ Risks", rep.get("risks"), miss)
+        _sect(":material/warning: Risks", rep.get("risks"), miss)
     if as_points(rep.get("red_flags")):
-        _sect("🚩 Red flags", rep.get("red_flags"))
+        _sect(":material/flag: Red flags", rep.get("red_flags"))
     c1, c2 = st.columns(2)
     with c1:
-        _sect("📋 Check before applying", rep.get("what_to_check_before_applying"), miss)
+        _sect(":material/content_paste: Check before applying", rep.get("what_to_check_before_applying"), miss)
     with c2:
         with st.expander("Data gaps"):
             bullets(rep.get("data_gaps"))
@@ -935,7 +912,7 @@ def render_ipo_report(rep: dict, card: dict) -> None:
         if pts:
             md += [f"## {title}"] + pts + [""]
     md += ["---", f"*{DISCLAIMER}*"]
-    st.download_button("⬇️ Download IPO note (Markdown)", "\n".join(md), file_name=f"{card['symbol']}_ipo_note.md", mime="text/markdown")
+    st.download_button(":material/download: Download IPO note (Markdown)", "\n".join(md), file_name=f"{card['symbol']}_ipo_note.md", mime="text/markdown")
 
 
 # =========================================================================== STOCK ANALYSIS
@@ -992,8 +969,8 @@ def search_pick(typed: str) -> str | None:
 def render_verdict(report: dict) -> None:
     v = report.get("verdict", {})
     stance = v.get("stance", "—")
-    icon = {"Bullish": "🟢", "Bearish": "🔴"}.get(stance.split()[0] if stance else "", "🟡")
-    st.markdown(f"<div class='card verdict'><b>{icon} {stance}</b> · conviction <b>{v.get('conviction', '—')}</b> · "
+    colr = {"Bullish": theme.T["up"], "Bearish": theme.T["down"]}.get(stance.split()[0] if stance else "", theme.T["gold"])
+    st.markdown(f"<div class='card verdict' style='border-left-color:{colr}'><b>{theme.dot(colr)} {stance}</b> · conviction <b>{v.get('conviction', '—')}</b> · "
                 f"{v.get('time_horizon', '')}<br>{v.get('one_liner', '')}</div>", unsafe_allow_html=True)
 
 
@@ -1015,14 +992,14 @@ def render_report(report: dict, pack: dict, figs: list) -> None:
             st.success(msg)
     sug = report.get("investment_suggestion") or {}
     if sug:
-        st.subheader(f"💡 Suggestion — best horizon: {sug.get('best_horizon', '—')}")
+        st.subheader(f":material/lightbulb: Suggestion — best horizon: {sug.get('best_horizon', '—')}")
         bullets(sug.get("summary"))
         if sug.get("avoid_if"):
             st.markdown("**Doesn't apply if:**")
             bullets(sug["avoid_if"])
     hr = report.get("horizon_ratings") or []
     if hr:
-        st.subheader("🎯 Ratings by horizon (model vs AI)")
+        st.subheader(":material/track_changes: Ratings by horizon (model vs AI)")
         st.dataframe(pd.DataFrame([{"Horizon": h.get("horizon"), "Model": h.get("model_rating"), "AI": h.get("ai_rating"),
                                     "Conviction": h.get("conviction"), "Why": h.get("rationale"), "Plan": h.get("plan")} for h in hr]),
                      hide_index=True, width="stretch")
@@ -1068,14 +1045,14 @@ def render_report(report: dict, pack: dict, figs: list) -> None:
     bullets(t.get("chart_observations"))
     lb = report.get("levels_and_breakouts") or []
     if lb:
-        st.subheader("🧱 Levels & breakouts (AI read)")
+        st.subheader(":material/stacked_line_chart: Levels & breakouts (AI read)")
         for t in lb:
             st.markdown(f"**{t.get('timeframe')}** — support {' · '.join(t.get('support_zones', [])) or '—'} | resistance "
                         f"{' · '.join(t.get('resistance_zones', [])) or '—'}  \n" + (f"Patterns: {'; '.join(t.get('patterns', []))}  \n" if t.get("patterns") else "")
                         + tag_badges(t.get("read", "")))
     nr = report.get("news_and_results") or {}
     if nr:
-        st.subheader(f"📰 News & results — sentiment: {nr.get('news_sentiment', '—')}")
+        st.subheader(f":material/newspaper: News & results — sentiment: {nr.get('news_sentiment', '—')}")
         st.markdown("**Latest results**")
         bullets(nr.get("latest_results"))
         bullets(nr.get("key_announcements"), "No material announcements")
@@ -1083,25 +1060,25 @@ def render_report(report: dict, pack: dict, figs: list) -> None:
             st.markdown("**Upcoming:** " + "; ".join(nr["upcoming_events"]))
     c1, c2 = st.columns(2)
     with c1:
-        st.subheader("🐂 Bull case")
+        st.subheader(":material/trending_up: Bull case")
         bullets(report.get("bull_case"))
-        st.subheader("⚡ Catalysts")
+        st.subheader(":material/bolt: Catalysts")
         bullets(report.get("catalysts"))
-        st.subheader("🔄 What would change the view")
+        st.subheader(":material/sync: What would change the view")
         bullets(report.get("what_would_change_my_mind"))
     with c2:
-        st.subheader("🐻 Bear case")
+        st.subheader(":material/trending_down: Bear case")
         bullets(report.get("bear_case"))
-        st.subheader("⚠️ Risks")
+        st.subheader(":material/warning: Risks")
         bullets(report.get("risks"))
-        st.subheader("📋 Quarterly monitoring checklist")
+        st.subheader(":material/content_paste: Quarterly monitoring checklist")
         bullets(report.get("monitoring_checklist"))
     with st.expander("Data gaps the AI flagged"):
         bullets(report.get("data_gaps"))
     m = pack["meta"]
     d1, d2 = st.columns(2)
-    d1.download_button("⬇️ Download report (HTML with charts)", to_html(report, pack, figs), file_name=f"{m['symbol']}_research_note.html", mime="text/html", width="stretch")
-    d2.download_button("⬇️ Download report (Markdown)", to_markdown(report, pack), file_name=f"{m['symbol']}_research_note.md", mime="text/markdown", width="stretch")
+    d1.download_button(":material/download: Download report (HTML with charts)", to_html(report, pack, figs), file_name=f"{m['symbol']}_research_note.html", mime="text/html", width="stretch")
+    d2.download_button(":material/download: Download report (Markdown)", to_markdown(report, pack), file_name=f"{m['symbol']}_research_note.md", mime="text/markdown", width="stretch")
 
 
 def stock_analysis() -> None:
@@ -1128,51 +1105,69 @@ def stock_analysis() -> None:
     meta, sc, tech, fund, val = pack["meta"], pack["scores"], pack["technical"], pack["fundamentals"], pack["valuation"]
     perf = tech["performance"]
 
-    st.markdown(f"## {meta['company']}  ·  `{meta['exchange_symbol']}`")
     cl = pack.get("classification") or {}
-    chips = [f":blue-badge[{cl['Sector']}]" if cl.get("Sector") else "",
-             f":violet-badge[{cl.get('Industry')}]" if cl.get("Industry") and cl.get("Industry") != cl.get("Sector") else "",
-             f":gray-badge[NSE: {cl['NSE industry']}]" if cl.get("NSE industry") else "",
-             f":orange-badge[{cl['Cap bucket']}]" if cl.get("Cap bucket") and cl.get("Cap bucket") != "Unclassified" else ""]
-    st.markdown(" ".join(c for c in chips if c) or f"{meta.get('sector') or '—'} › {meta.get('industry') or '—'}")
-    st.caption((f"Indices: {cl['Indices']} · " if cl.get("Indices") else "") + f"prices as of {meta['price_as_of']} · {meta['data_source']}")
+    chips = "".join([
+        theme.chip(cl.get("Sector") or meta.get("sector") or "", "brand"),
+        theme.chip(cl.get("Industry") or meta.get("industry") or "", "cyan") if (cl.get("Industry") or meta.get("industry")) != (cl.get("Sector") or meta.get("sector")) else "",
+        theme.chip(f"NSE: {cl['NSE industry']}") if cl.get("NSE industry") else "",
+        theme.chip(cl["Cap bucket"], "gold") if cl.get("Cap bucket") and cl.get("Cap bucket") != "Unclassified" else "",
+    ])
+    meta_line = theme.esc((f"Indices: {cl['Indices']} · " if cl.get("Indices") else "") + f"Prices as of {meta['price_as_of']} · {meta['data_source']}")
+    closes = sd.daily["Close"].iloc[-126:].tolist()
+    st.markdown(theme.stock_hero(meta["company"], meta["exchange_symbol"], chips, meta_line, perf["last_close"],
+                                 perf["returns_pct"].get("1D"), closes, perf["low_52w"], perf["high_52w"], perf.get("pct_from_52w_high")),
+                unsafe_allow_html=True)
     for w in meta.get("warnings", []):
         st.warning(w)
-    m = st.columns(6)
-    m[0].metric("Price", fmt(perf["last_close"], nd=2, prefix="₹"), fmt(perf["returns_pct"]["1D"], "%", 2))
-    m[1].metric("Market cap", fmt(val["multiples"].get("market_cap_cr"), " cr", 0, "₹"))
-    m[2].metric("P/E", fmt(val["multiples"].get("pe_ttm_or_latest_fy"), "x"))
-    m[3].metric("P/B", fmt(val["multiples"].get("pb"), "x", 2))
-    m[4].metric("52W range", f"{perf['low_52w']:,.0f} – {perf['high_52w']:,.0f}", f"{perf['pct_from_52w_high']:+.1f}% from high", delta_color="off")
-    m[5].metric("1Y return", fmt(perf["returns_pct"]["1Y"], "%"), f"vs Nifty {perf.get('relative_strength_vs_nifty_pct', {}).get('1Y', 0):+.1f}pp" if perf.get("relative_strength_vs_nifty_pct") else None)
 
-    g = st.columns(4)
+    rs1y = (perf.get("relative_strength_vs_nifty_pct") or {}).get("1Y")
+    r1m, r1y = perf["returns_pct"].get("1M"), perf["returns_pct"].get("1Y")
+    st.markdown(theme.tiles([
+        {"label": "Market cap", "value": fmt(val["multiples"].get("market_cap_cr"), " cr", 0, "₹"), "icon": "account_balance"},
+        {"label": "P/E", "value": fmt(val["multiples"].get("pe_ttm_or_latest_fy"), "x"), "icon": "functions"},
+        {"label": "P/B", "value": fmt(val["multiples"].get("pb"), "x", 2), "icon": "menu_book"},
+        {"label": "1M return", "value": fmt(r1m, "%"), "tone": theme.tone_of(r1m), "icon": "calendar_month",
+         "accent": theme.T["up"] if (r1m or 0) >= 0 else theme.T["down"]},
+        {"label": "1Y return", "value": fmt(r1y, "%"), "icon": "show_chart",
+         "accent": theme.T["up"] if (r1y or 0) >= 0 else theme.T["down"],
+         "delta": f"{'▲' if (rs1y or 0) >= 0 else '▼'} {rs1y:+.1f} pts vs Nifty" if rs1y is not None else "", "tone": theme.tone_of(rs1y)},
+    ]), unsafe_allow_html=True)
+
+    def _band(x: float | None, words: tuple[str, str, str], lo: float = 0, hi: float = 100) -> str:
+        if x is None:
+            return "—"
+        p_ = 100 * (x - lo) / (hi - lo)
+        return words[0] if p_ >= 62 else words[2] if p_ <= 38 else words[1]
+
     ov = sc["overall_signal"]
-    g[0].plotly_chart(charts.gauge(ov.get("score"), f"Overall model signal · {ov.get('label')}"), width="stretch")
-    g[1].plotly_chart(charts.gauge(sc["fundamental_health_0_100"], "Fundamental health"), width="stretch")
-    g[2].plotly_chart(charts.gauge(sc["valuation_0_100_higher_is_cheaper"], "Valuation (higher = cheaper)"), width="stretch")
-    g[3].plotly_chart(charts.gauge(sc["technical_trend_minus100_100"], "Technical trend", -100, 100), width="stretch")
+    fh, vs, tt = sc["fundamental_health_0_100"], sc["valuation_0_100_higher_is_cheaper"], sc["technical_trend_minus100_100"]
+    st.markdown("<div class='rings'>" + "".join([
+        theme.ring(ov.get("score"), "Overall model signal", ov.get("label") or "", "blend of the three scores"),
+        theme.ring(fh, "Fundamental health", _band(fh, ("Strong", "Average", "Weak")), "0–100"),
+        theme.ring(vs, "Valuation", _band(vs, ("Looks cheap", "Fair", "Looks expensive")), "0–100, higher = cheaper"),
+        theme.ring(tt, "Technical trend", _band(tt, ("Uptrend", "Sideways", "Downtrend"), -100, 100), "−100 to +100", -100, 100),
+    ]) + "</div>", unsafe_allow_html=True)
 
     hv = pack.get("horizon_view") or {}
     hz = hv.get("horizons", {})
     if hz:
-        st.markdown("### 🎯 Rating by investment horizon")
-        icon = {"Strong Buy": "🟢", "Buy": "🟢", "Neutral": "⚪", "Sell": "🟠", "Strong Sell": "🔴"}
+        st.markdown("### :material/track_changes: Rating by investment horizon")
         cards = "".join(
-            f"<div class='hz-card'><div class='h'>{hname}</div><div class='r'>{icon.get(h['rating'], '⚪')} {h['rating']}</div>"
+            f"<div class='hz-card rise rise-{min(i + 1, 6)}' style='--c:{charts.RATING_COLORS.get(h['rating'], '#94a3b8')}'>"
+            f"<div class='h'>{hname}</div><div class='r'>{h['rating']}</div>"
             f"<div class='s'>score {h.get('score', '—')} · {h.get('confidence', '—')} confidence</div></div>"
-            for hname, h in hz.items())
+            for i, (hname, h) in enumerate(hz.items()))
         st.markdown(f"<div class='hz-grid'>{cards}</div>", unsafe_allow_html=True)
         st.info(f"**{hv.get('suggestion', '')}** {hv.get('disclaimer', '')}")
 
-    names = ["📊 Summary", "🎯 Horizons & plan", "🧱 Levels & breakouts", "📈 Technical", "🏦 Fundamentals", "💰 Valuation",
-             "📰 News & results", "👥 Peers", "🤖 AI report", "💬 Ask AI", "🧾 Data"]
+    names = [":material/bar_chart: Summary", ":material/track_changes: Horizons & plan", ":material/stacked_line_chart: Levels & breakouts", ":material/trending_up: Technical", ":material/account_balance: Fundamentals", ":material/payments: Valuation",
+             ":material/newspaper: News & results", ":material/groups: Peers", ":material/smart_toy: AI report", ":material/forum: Ask AI", ":material/receipt_long: Data"]
     T = dict(zip(names, st.tabs(names)))
     t_annual = annual_table(sd)
     figs_for_report: list = []
 
     # ---------------- summary
-    with T["📊 Summary"]:
+    with T[":material/bar_chart: Summary"]:
         c1, c2 = st.columns(2)
         comps = {k: v["score"] for k, v in fund["health"]["components"].items()}
         rfig = charts.radar(comps, "Fundamental health profile")
@@ -1184,13 +1179,13 @@ def stock_analysis() -> None:
         rets = pd.Series({**perf["returns_pct"], **{f"{k} CAGR": v for k, v in perf["cagr_pct"].items()}})
         c1.plotly_chart(charts.signed_bars(rets, "Returns by period"), width="stretch")
         with c2:
-            st.markdown("#### 🚩 Red flags (rule-based)")
+            st.markdown("#### :material/flag: Red flags (rule-based)")
             if fund["red_flags"]:
                 for f_ in fund["red_flags"]:
-                    st.markdown(f"<span class='flag'>⚠ {f_}</span>", unsafe_allow_html=True)
+                    st.markdown(f"<span class='flag'>{theme.icon('warning')} {html_escape(f_)}</span>", unsafe_allow_html=True)
             else:
-                st.markdown("<span class='ok'>✓ No rule-based red flags triggered</span>", unsafe_allow_html=True)
-            st.markdown("#### 📌 Recent technical events")
+                st.markdown(f"<span class='ok'>{theme.icon('verified')} No rule-based red flags triggered</span>", unsafe_allow_html=True)
+            st.markdown("#### :material/push_pin: Recent technical events")
             for e in tech["recent_events"][:6]:
                 st.markdown(f"- `{e['date']}` {e['event']}")
             st.markdown("#### Risk")
@@ -1201,7 +1196,7 @@ def stock_analysis() -> None:
                 st.write(meta["business_summary"])
 
     # ---------------- technical
-    with T["📈 Technical"]:
+    with T[":material/trending_up: Technical"]:
         tf_opts = ["Daily", "Weekly", "Monthly"] + (["1 Hour", "4 Hour"] if sd.intraday is not None and len(sd.intraday) > 30 else [])
         c1, c2 = st.columns([1, 3])
         tf = c1.radio("Timeframe", tf_opts, horizontal=False)
@@ -1240,7 +1235,7 @@ def stock_analysis() -> None:
             st.markdown(", ".join(tech["candlestick_last_bar"]) or "No notable single-bar pattern")
 
     # ---------------- fundamentals
-    with T["🏦 Fundamentals"]:
+    with T[":material/account_balance: Fundamentals"]:
         if t_annual.empty:
             st.info("No annual statements available from Yahoo for this stock.")
         else:
@@ -1283,8 +1278,10 @@ def stock_analysis() -> None:
                     f"Altman Z''-EM: **{fund['altman_z_em'].get('score', '—')}** ({fund['altman_z_em'].get('zone')})")
         cols = st.columns(3)
         for i, chk in enumerate(pio.get("checks", [])):
-            icon = "✅" if chk["pass"] else "❌" if chk["pass"] is False else "➖"
-            cols[i % 3].markdown(f"<div class='card'>{icon} {chk['test']}</div>", unsafe_allow_html=True)
+            icon = ("<span class='up-t'>" + theme.icon("check_circle") + "</span>" if chk["pass"] else
+                    "<span class='down-t'>" + theme.icon("cancel") + "</span>" if chk["pass"] is False else
+                    "<span class='neutral-t'>" + theme.icon("remove") + "</span>")
+            cols[i % 3].markdown(f"<div class='card'>{icon} {html_escape(chk['test'])}</div>", unsafe_allow_html=True)
         st.markdown("### Health score breakdown")
         st.dataframe(pd.DataFrame([{"Component": k, "Score (0-100)": v["score"], "Basis": v["basis"]} for k, v in fund["health"]["components"].items()]),
                      hide_index=True, width="stretch")
@@ -1293,7 +1290,7 @@ def stock_analysis() -> None:
         st.caption("Data gaps: " + " ".join(fund["data_gaps"]))
 
     # ---------------- valuation
-    with T["💰 Valuation"]:
+    with T[":material/payments: Valuation"]:
         mu = val["multiples"]
         m = st.columns(6)
         m[0].metric("P/E", fmt(mu.get("pe_ttm_or_latest_fy"), "x"))
@@ -1341,7 +1338,7 @@ def stock_analysis() -> None:
             st.caption(f"Street targets (Yahoo, {s.get('analysts')} analysts): low ₹{s['targetLowPrice']:,.0f} · mean ₹{s['targetMeanPrice']:,.0f} · high ₹{s['targetHighPrice']:,.0f}")
 
     # ---------------- horizons & plan
-    with T["🎯 Horizons & plan"]:
+    with T[":material/track_changes: Horizons & plan"]:
         if not hz:
             st.info("Horizon ratings unavailable.")
         else:
@@ -1371,8 +1368,8 @@ def stock_analysis() -> None:
                                    f"median {hh['median_return_similar_pct']:+.1f}% · worst-10% {hh['worst_10pct_similar_pct']:+.1f}% · "
                                    f"{hh['samples']} samples")
                         edge = hh["edge_pp"]
-                        b.caption("✅ setup has had an edge" if edge >= 5 else "⚠️ setup has been a worse-than-average signal" if edge <= -5
-                                  else "➖ no meaningful edge — treat the technical part of this rating with caution")
+                        b.caption(":material/check_circle: setup has had an edge" if edge >= 5 else ":material/warning: setup has been a worse-than-average signal" if edge <= -5
+                                  else ":material/remove: no meaningful edge — treat the technical part of this rating with caution")
                     pl = h.get("plan")
                     if pl:
                         b.markdown(f"**Trade plan ({pl['timeframe_used']} levels)**  \n"
@@ -1382,7 +1379,7 @@ def stock_analysis() -> None:
                         (b.success if pl.get("attractive") else b.warning)(pl["note"])
 
     # ---------------- levels & breakouts
-    with T["🧱 Levels & breakouts"]:
+    with T[":material/stacked_line_chart: Levels & breakouts"]:
         brk = pack.get("breakouts", {})
         fr = tf_frames(sd)
         avail = [k for k in ("1H", "4H", "1D", "1W") if brk.get(k, {}).get("available")]
@@ -1422,7 +1419,7 @@ def stock_analysis() -> None:
                 c2.caption("No pattern detected on this timeframe right now.")
 
     # ---------------- news & results
-    with T["📰 News & results"]:
+    with T[":material/newspaper: News & results"]:
         try:
             nb = news_bundle(symbol, meta["company"])
         except Exception as e:
@@ -1430,7 +1427,7 @@ def stock_analysis() -> None:
             st.error(f"News unavailable: {e}")
         if nb:
             for e_ in nb.get("errors", []):
-                st.caption(f"⚠️ Could not fetch: {e_} (NSE sometimes blocks cloud servers; it usually works from a home/office connection)")
+                st.caption(f":material/warning: Could not fetch: {e_} (NSE sometimes blocks cloud servers; it usually works from a home/office connection)")
             m = st.columns(4)
             m[0].metric("Next results", nb.get("next_results_date") or "not announced",
                         f"in {nb['days_to_results']} days" if nb.get("days_to_results") is not None else None, delta_color="off")
@@ -1440,32 +1437,32 @@ def stock_analysis() -> None:
             uca = nb.get("upcoming_corporate_actions", [])
             m[3].metric("Upcoming corporate action", uca[0]["action"][:28] if uca else "none", uca[0]["ex_date"] if uca else None, delta_color="off")
             if nb.get("attention_items"):
-                st.markdown("#### ⚠️ Filings that deserve attention")
+                st.markdown("#### :material/warning: Filings that deserve attention")
                 for a in nb["attention_items"]:
                     st.markdown(f"- `{a['date'][:10]}` **{', '.join(a['tags'])}** — {esc(a['text'][:220])}" + (f" [PDF]({a['link']})" if a.get("link") else ""))
             c1, c2 = st.columns(2)
             with c1:
-                st.markdown("#### 🏛️ Exchange announcements (NSE)")
+                st.markdown("#### :material/account_balance: Exchange announcements (NSE)")
                 tags_all = sorted({t for a in nb.get("announcements", []) for t in a["tags"]})
                 pick = st.multiselect("Filter by type", tags_all, default=[t for t in tags_all if t not in ("Other", "Routine compliance")], key=f"ann_{symbol}")
                 for a in [a for a in nb.get("announcements", []) if set(a["tags"]) & set(pick)][:25]:
                     st.markdown(f"- `{a['date'][:10]}` *{', '.join(a['tags'])}* — {esc(a['text'][:200])}" + (f" [PDF]({a['link']})" if a.get("link") else ""))
             with c2:
-                st.markdown("#### 📰 Press headlines (Google News, India)")
+                st.markdown("#### :material/newspaper: Press headlines (Google News, India)")
                 for n in nb.get("news", [])[:20]:
-                    t_icon = "🟢" if n["tone"] > 0 else "🔴" if n["tone"] < 0 else "⚪"
+                    t_icon = ":green[●]" if n["tone"] > 0 else ":red[●]" if n["tone"] < 0 else ":gray[●]"
                     st.markdown(f"- {t_icon} `{n['date']}` [{esc(n['title'])}]({n['link']}) — *{esc(n['source'])}*")
                 st.caption("Tone dots are a rough keyword count. Headlines from aggregators often disagree on numbers — trust exchange filings first.")
             c1, c2 = st.columns(2)
             with c1:
-                st.markdown("#### 📅 Board meetings")
+                st.markdown("#### :material/event: Board meetings")
                 st.dataframe(pd.DataFrame(nb.get("board_meetings", [])[:8]), hide_index=True, width="stretch")
             with c2:
-                st.markdown("#### 💸 Corporate actions")
+                st.markdown("#### :material/currency_rupee: Corporate actions")
                 st.dataframe(pd.DataFrame(nb.get("corporate_actions", [])[:8]), hide_index=True, width="stretch")
             qt2 = quarterly_table(sd)
             if not qt2.empty:
-                st.markdown("#### 📊 Latest quarterly results (₹ crore)")
+                st.markdown("#### :material/bar_chart: Latest quarterly results (₹ crore)")
                 q2 = qt2.copy()
                 for c in ("Revenue", "Operating profit", "Net profit"):
                     if c in q2:
@@ -1474,7 +1471,7 @@ def stock_analysis() -> None:
                 st.caption("Quarterly numbers from Yahoo (it sometimes skips a quarter); growth is compared with the same quarter a year earlier by date.")
 
     # ---------------- peers
-    with T["👥 Peers"]:
+    with T[":material/groups: Peers"]:
         peers = pd.DataFrame(pack.get("peers") or [])
         if peers.empty:
             st.info("No peers loaded. Enable 'Fetch peer comparison' in the sidebar (uses NSE's industry classification from the Nifty 500).")
@@ -1489,11 +1486,11 @@ def stock_analysis() -> None:
 
     # ---------------- AI report
     rkey = f"report::{symbol}::{provider}::{model}"
-    with T["🤖 AI report"]:
+    with T[":material/smart_toy: AI report"]:
         st.caption("The AI receives only the computed fact pack (see the Data tab) and must tag every claim as "
                    "[DATA], [INFERENCE] or [ASSUMPTION]. A number audit then checks its figures against the data.")
         c1, c2 = st.columns([1, 3])
-        go_ = c1.button("🤖 Generate AI analysis", type="primary", width="stretch")
+        go_ = c1.button(":material/smart_toy: Generate AI analysis", type="primary", width="stretch")
         c2.markdown(f"Engine: **{provider}** · model **{model or '—'}**")
         if go_:
             if not model:
@@ -1508,7 +1505,7 @@ def stock_analysis() -> None:
             render_report(st.session_state[rkey], pack, figs_for_report)
 
     # ---------------- Ask AI
-    with T["💬 Ask AI"]:
+    with T[":material/forum: Ask AI"]:
         hkey = f"chat::{symbol}"
         hist = st.session_state.setdefault(hkey, [])
         for msg in hist:
@@ -1525,9 +1522,9 @@ def stock_analysis() -> None:
                     st.error(str(e))
 
     # ---------------- raw data
-    with T["🧾 Data"]:
+    with T[":material/receipt_long: Data"]:
         st.caption("This is exactly what the AI sees. Every chart and score is computed from it in Python.")
-        st.download_button("⬇️ Fact pack (JSON)", fact_pack_json(pack, compact=False), file_name=f"{symbol}_fact_pack.json", mime="application/json")
+        st.download_button(":material/download: Fact pack (JSON)", fact_pack_json(pack, compact=False), file_name=f"{symbol}_fact_pack.json", mime="application/json")
         st.json(pack, expanded=False)
         if sd.news:
             st.markdown("#### Recent headlines (Yahoo)")
@@ -1537,6 +1534,13 @@ def stock_analysis() -> None:
 
 # All page content lives in one slot. When the user switches view, the slot is cleared at once so the old page
 # doesn't linger (faded) while the new one loads.
+@st.cache_data(ttl=300, show_spinner=False)
+def cached_pulse() -> dict:
+    return market_pulse()
+
+
+# Ticker slot first (top of page) but filled last, so the page content never waits for it.
+_ticker = st.empty()
 _slot = st.empty()
 if st.session_state.get("_last_view") != view:
     _slot.empty()
@@ -1552,3 +1556,7 @@ with _slot.container():
         universe_view()
     else:
         ipo_view()
+
+_p = cached_pulse()
+if _p.get("items"):
+    _ticker.markdown(theme.ticker(_p["items"], _p["live"], _p["as_of"]), unsafe_allow_html=True)

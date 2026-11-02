@@ -1,9 +1,30 @@
+# Dark fintech theme (see isa/theme.py for the full design system and the custom CSS on top of this).
 [theme]
 base = "dark"
-primaryColor = "#3987e5"
-backgroundColor = "#151514"
-secondaryBackgroundColor = "#1f1f1d"
-textColor = "#f0efec"
+primaryColor = "#6366F1"
+backgroundColor = "#050816"
+secondaryBackgroundColor = "#111A2E"
+textColor = "#E2E8F0"
+linkColor = "#A5B4FC"
+borderColor = "#1E293B"
+dataframeBorderColor = "#1E293B"
+dataframeHeaderBackgroundColor = "#111A2E"
+baseRadius = "medium"
+font = "'Fira Sans':https://fonts.googleapis.com/css2?family=Fira+Sans:wght@400;500;600;700;800&display=swap, sans-serif"
+codeFont = "'Fira Code':https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&display=swap, monospace"
+greenColor = "#22C55E"
+redColor = "#EF4444"
+blueColor = "#6366F1"
+violetColor = "#8B5CF6"
+orangeColor = "#F59E0B"
+chartCategoricalColors = ["#6366F1", "#22D3EE", "#F59E0B", "#A855F7", "#22C55E", "#EC4899", "#38BDF8", "#F97316"]
+
+[theme.sidebar]
+backgroundColor = "#0A1024"
+secondaryBackgroundColor = "#111A2E"
+
+[client]
+toolbarMode = "minimal"
 
 [server]
 headless = true
