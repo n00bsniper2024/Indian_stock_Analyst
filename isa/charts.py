@@ -415,3 +415,27 @@ def ipo_financials(table: list[dict[str, Any]]) -> go.Figure:
     fig.update_layout(barmode="group", bargroupgap=0.08)
     fig.update_yaxes(title_text="₹ crore")
     return _layout(fig, "Restated financials from the prospectus (₹ crore; stub periods are not annualised)", height=360)
+
+
+# =========================================================================== breakout scanner
+def scanner_chart(df: pd.DataFrame, symbol: str, bars: int = 160) -> go.Figure:
+    """Daily candles with 50/150/200-day averages, the 20-day-high pivot and volume vs its 50-day average."""
+    x = df.copy()
+    for n in (50, 150, 200):
+        x[f"SMA{n}"] = x["Close"].rolling(n).mean()
+    x["V50"] = x["Volume"].rolling(50).mean()
+    x = x.iloc[-bars:]
+    pivot = float(df["High"].iloc[-20:].max())
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.75, 0.25])
+    fig.add_trace(go.Candlestick(x=x.index, open=x["Open"], high=x["High"], low=x["Low"], close=x["Close"], name="Price",
+                                 increasing=dict(line=dict(color=UP, width=1), fillcolor=UP),
+                                 decreasing=dict(line=dict(color=DOWN, width=1), fillcolor=DOWN)), 1, 1)
+    for n, col in ((50, S[3]), (150, S[6]), (200, S[0])):
+        fig.add_trace(go.Scatter(x=x.index, y=x[f"SMA{n}"], name=f"SMA {n}", line=dict(color=col, width=1.4)), 1, 1)
+    fig.add_hline(y=pivot, line=dict(color=S[2], width=1.5, dash="dash"), row=1, col=1,
+                  annotation_text=f"Pivot ₹{pivot:,.1f}", annotation_font_color=S[2], annotation_position="top left")
+    colors = [UP if c >= o else DOWN for c, o in zip(x["Close"], x["Open"])]
+    fig.add_trace(go.Bar(x=x.index, y=x["Volume"], marker_color=colors, name="Volume", showlegend=False), 2, 1)
+    fig.add_trace(go.Scatter(x=x.index, y=x["V50"], name="Volume 50-day avg", line=dict(color=MUTED, width=1)), 2, 1)
+    fig.update_xaxes(rangeslider_visible=False, rangebreaks=[dict(bounds=["sat", "mon"])])
+    return _layout(fig, f"{symbol} · daily", height=460)

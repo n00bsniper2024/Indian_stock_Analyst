@@ -12,6 +12,7 @@ import time
 from dataclasses import replace
 
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
 from isa import charts
@@ -25,6 +26,7 @@ from isa.keystore import mask, remove_key, save_key
 from isa.overview import breadth, category_snapshot
 from isa.report import DISCLAIMER, to_html, to_markdown
 from isa import search as stock_search
+from isa import scanner
 from isa.classify import load_classification
 from isa import ipo as ipo_mod
 from isa.ai import extract_ipo_financials, generate_ipo_analysis
@@ -186,7 +188,7 @@ def fmt(v, suffix: str = "", nd: int = 1, prefix: str = "") -> str:
 
 
 # --------------------------------------------------------------------------- sidebar
-VIEWS = ["🔎 Stock analysis", "🗺️ Market overview", "📚 Stock universe", "🆕 IPO centre"]
+VIEWS = ["🔎 Stock analysis", "🚀 Breakout scanner", "🗺️ Market overview", "📚 Stock universe", "🆕 IPO centre"]
 with st.sidebar:
     st.markdown("## 📈 Indian Stock Analyst")
     if DEMO_MODE:
@@ -476,6 +478,173 @@ def html_escape(s: str) -> str:
     import html
 
     return html.escape(str(s))
+
+
+# --------------------------------------------------------------------------- breakout scanner
+_RULE_FIELDS = {
+    "near_pivot_pct": ("Within % of 20-day high", 0.5, 10.0, 0.5),
+    "near_52w_pct": ("Within % of 52-week high (0 = off)", 0.0, 50.0, 1.0),
+    "min_6m_return_pct": ("Min 6-month return % (0 = off)", 0.0, 300.0, 5.0),
+    "min_10d_swing_pct": ("Min 10-day swing % (0 = off)", 0.0, 40.0, 1.0),
+    "max_10d_swing_pct": ("Max 10-day swing % (0 = off)", 0.0, 40.0, 1.0),
+    "min_price": ("Min price ₹", 0.0, 5000.0, 10.0),
+    "min_traded_cr": ("Min traded value ₹ cr/day", 0.0, 500.0, 1.0),
+}
+
+
+def _apply_preset() -> None:
+    r = scanner.PRESETS[st.session_state["bs_preset"]]
+    for k in list(_RULE_FIELDS) + ["not_broken_yet", "trend_template", "volume_drying_up"]:
+        st.session_state[f"bs_{k}"] = getattr(r, k)
+
+
+@st.cache_resource(ttl=900, show_spinner=False, max_entries=2)
+def cached_scan_features(years: int, tag: str, _hist: dict) -> dict:
+    return scanner.features(scanner.to_wide(_hist))
+
+
+def breakout_view() -> None:
+    st.title("🚀 Breakout scanner")
+    st.caption(
+        "Finds strong stocks pressing against their 20-day high **before** they close above it, then tests how often "
+        "that actually led to a breakout. A model screen, not a recommendation: on 2024–26 data the default rules "
+        "broke out within 10 sessions ~70% of the time and gave a clean breakout ~1 time in 3. Two in three still fail or stall."
+    )
+    if "bs_near_pivot_pct" not in st.session_state:
+        st.session_state["bs_preset"] = list(scanner.PRESETS)[0]
+        _apply_preset()
+    meta = scanner.universe()
+    with st.expander("⚙️ Rules", expanded=False):
+        st.selectbox("Preset", list(scanner.PRESETS), key="bs_preset", on_change=_apply_preset)
+        cols = st.columns(4)
+        vals = {}
+        for i, (k, (label, lo, hi, step)) in enumerate(_RULE_FIELDS.items()):
+            vals[k] = cols[i % 4].number_input(label, lo, hi, step=step, key=f"bs_{k}")
+        t1, t2, t3 = st.columns(3)
+        vals["not_broken_yet"] = t1.checkbox("Not yet closed above the 20-day high", key="bs_not_broken_yet",
+                                             help="Off = also list stocks that broke out today.")
+        vals["trend_template"] = t2.checkbox("Uptrend: price > SMA50 > SMA150 > SMA200, SMA200 rising", key="bs_trend_template")
+        vals["volume_drying_up"] = t3.checkbox("Volume drying up (10-day < 50-day average)", key="bs_volume_drying_up",
+                                               help="Textbook rule. In testing it made breakouts LESS likely.")
+    rules = scanner.Rules(**vals)
+    c1, c2, c3 = st.columns([2, 2, 1])
+    caps = c1.multiselect("Market cap", ["Large cap", "Mid cap", "Small cap", "Micro cap"], placeholder="All")
+    sectors = c2.multiselect("Sector", sorted(meta["Sector"].dropna().unique()), placeholder="All")
+    years = c3.selectbox("History", [3, 5, 7], format_func=lambda y: f"{y} years",
+                         help="More years = a longer test of the rules, but a slower first download.")
+    uni = meta
+    if caps:
+        uni = uni[uni["Cap bucket"].isin(caps)]
+    if sectors:
+        uni = uni[uni["Sector"].isin(sectors)]
+    key = f"bs_loaded_{years}"
+    if not st.session_state.get(key):
+        gate = st.empty()
+        with gate.container():
+            st.info(f"The scan downloads {years} years of daily prices for all {len(meta)} Nifty Total Market stocks. "
+                    "The first run takes a few minutes; after that it is cached and refreshes the latest prices every 15 minutes.")
+            go_now = st.button("▶️ Load prices and scan", type="primary")
+        if not go_now:
+            return
+        gate.empty()
+    bar = st.progress(0.0, text="Loading prices…")
+    try:
+        hist = scanner.load_history(meta["Symbol"].tolist(), years=years, progress=lambda p, t: bar.progress(min(p, 1.0), text=t))
+    except Exception as e:
+        bar.empty()
+        st.error(f"Could not load prices: {e}")
+        return
+    bar.empty()
+    st.session_state[key] = True
+    last = max((d.index[-1] for d in hist.values() if len(d)), default=None)
+    with st.spinner("Computing…"):
+        f_all = cached_scan_features(years, f"{len(hist)}:{last}", hist)
+    keep = [s for s in uni["Symbol"] if s in f_all["c"].columns]
+    if not keep:
+        st.warning("No stocks in this filter.")
+        return
+    f = {k: v[keep] for k, v in f_all.items()}
+    today = scanner.scan_today(f, rules, meta)
+    as_of = pd.Timestamp(f["c"].index[-1])
+    tab_a, tab_b, tab_c = st.tabs(["🎯 Today's candidates", "📊 How well do these rules work?", "📋 Chartink version"])
+
+    with tab_a:
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Candidates", len(today))
+        m2.metric("Stocks scanned", len(keep))
+        m3.metric("Prices as of", as_of.strftime("%d %b %Y"))
+        st.caption("During market hours the last candle is still forming, so today's volume looks low and the list can change until 3:30 pm.")
+        if today.empty:
+            st.info("No stock meets every rule today. That is normal in weak markets; loosen the rules or try the 'Looser' preset.")
+        else:
+            show = today[["Symbol", "Company", "Sector", "Cap bucket", "Close", "Pivot (20-day high)", "Gap to pivot %",
+                          "6-month return %", "10-day swing %", "Below 52-week high %", "Volume vs 50-day avg", "Traded ₹ cr/day"]]
+            ev = st.dataframe(
+                show, hide_index=True, width="stretch", on_select="rerun", selection_mode="single-row", key="bs_table",
+                column_config={
+                    "Close": st.column_config.NumberColumn(format="₹%.2f"),
+                    "Pivot (20-day high)": st.column_config.NumberColumn(format="₹%.2f", help="Breakout = a daily close above this"),
+                    "Gap to pivot %": st.column_config.NumberColumn(format="%.1f%%"),
+                    "6-month return %": st.column_config.NumberColumn(format="%.0f%%"),
+                    "10-day swing %": st.column_config.NumberColumn(format="%.1f%%"),
+                    "Below 52-week high %": st.column_config.NumberColumn(format="%.1f%%"),
+                    "Volume vs 50-day avg": st.column_config.NumberColumn(format="%.2f×"),
+                    "Traded ₹ cr/day": st.column_config.NumberColumn(format="%.0f"),
+                },
+            )
+            rows = ev.selection.rows if ev and hasattr(ev, "selection") else []
+            sym = show.iloc[rows[0]]["Symbol"] if rows else show.iloc[0]["Symbol"]
+            st.caption("Click a row to see its chart.")
+            st.plotly_chart(charts.scanner_chart(hist[sym], sym), width="stretch")
+
+            def _jump(s: str = sym) -> None:
+                st.session_state.update(symbol=s, stock_query=s, view=VIEWS[0])
+
+            st.button(f"🔎 Full analysis of {sym}", type="primary", on_click=_jump)
+
+    with tab_b:
+        st.caption(
+            "Every day in the downloaded history where a stock met these rules, and what happened next. "
+            "**Breakout** = a daily close above the 20-day high within 10 sessions. **Clean** = after that, price got "
+            "10% above the old high within 30 sessions without first closing 3% below it. Compared with every liquid "
+            "stock within 8% of its 20-day high on the same days."
+        )
+        with st.spinner("Testing the rules on every day of history…"):
+            bt = scanner.backtest(f, rules)
+        if not bt["signals"]:
+            st.info("These rules never triggered in the downloaded history. Loosen them or load more years.")
+        else:
+            m1, m2, m3, m4 = st.columns(4)
+            d1 = (bt["breakout_pct"] or 0) - (bt["base_breakout_pct"] or 0)
+            d2 = (bt["clean_pct"] or 0) - (bt["base_clean_pct"] or 0)
+            m1.metric("Broke out within 10 sessions", f"{bt['breakout_pct']}%", f"{d1:+.1f} pts vs {bt['base_breakout_pct']}%")
+            m2.metric("Clean breakout", f"{bt['clean_pct']}%", f"{d2:+.1f} pts vs {bt['base_clean_pct']}%")
+            m3.metric("Signals", f"{bt['signals']:,}", help="Stock-days that met the rules")
+            m4.metric("Per trading day", bt["per_day"])
+            st.caption(f"Tested {bt['from']} → {bt['to']} on {bt['stocks']} stocks · {bt['distinct_stocks']} different stocks triggered.")
+            yrs = bt["years"]
+            fig = go.Figure()
+            for col, color in (("Rules: breakout %", charts.S[0]), ("All near-high stocks: breakout %", charts.MUTED),
+                               ("Rules: clean %", charts.S[2]), ("All near-high stocks: clean %", "#5e5d57")):
+                fig.add_trace(go.Bar(x=yrs.index.astype(str), y=yrs[col], name=col, marker_color=color))
+            fig = charts._layout(fig, "Hit rate by year (%)", height=380)
+            fig.update_layout(legend=dict(y=1.02, yanchor="bottom", x=1, xanchor="right"), margin=dict(t=80))
+            st.plotly_chart(fig, width="stretch")
+            st.dataframe(yrs, width="stretch")
+            st.markdown("#### Latest signals and what happened")
+            rec = bt["recent"].copy()
+            rec["Signal date"] = rec["Signal date"].dt.date
+            st.dataframe(rec, hide_index=True, width="stretch", height=320)
+            st.caption(
+                "Limits: the stock list is today's Nifty Total Market, so companies that later dropped out are missing "
+                "(this flatters every number a little). Signals on consecutive days for the same stock are counted "
+                "separately. The latest ~40 sessions can't be judged yet. Past hit rates are not a promise."
+            )
+
+    with tab_c:
+        st.caption("The same rules in Chartink's scan language. Paste into Chartink's scan editor. "
+                   "Chartink can't rank stocks against each other, so these are fixed thresholds, exactly as tested here.")
+        st.code(scanner.chartink(rules), language="text")
 
 
 def ipo_view() -> None:
@@ -1376,8 +1545,10 @@ with _slot.container():
     if view == VIEWS[0]:
         stock_analysis()
     elif view == VIEWS[1]:
-        market_overview()
+        breakout_view()
     elif view == VIEWS[2]:
+        market_overview()
+    elif view == VIEWS[3]:
         universe_view()
     else:
         ipo_view()

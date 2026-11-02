@@ -29,6 +29,7 @@ powered by the same engine.
 | **Levels & breakouts** | Support and resistance **zones** (price bands, not lines) and breakout patterns on **1H, 4H, 1D and 1W** — zone breakouts with volume confirmation & failed-breakout detection, consolidation ranges, ascending/descending/symmetrical triangles, wedges, channels, double tops/bottoms, trendline breaks, 52-week/all-time-high breakouts, Bollinger squeezes, NR7/inside bars — each with trigger, target and invalidation, drawn on the chart |
 | **News & results** | NSE exchange filings (tagged: results, orders, M&A, fund raising, promoter/pledge/SAST, ratings, management, legal), alerts for filings that need attention, next results date (event risk), board meetings, dividends/bonus/splits, Google News (India) headlines, latest quarterly results |
 | **IPO centre** | Every open and announced IPO on NSE (mainboard + SME) with price band, lot size, minimum investment, issue size, fresh issue vs offer-for-sale, lead managers and registrar · **live subscription by investor category** (QIB, NII, retail) · a rule-based listing-gain scorecard · the company's restated financials **read from the Red Herring Prospectus** (every figure checked against the prospectus text; P/E, margins, ROE, debt/equity and post-issue market cap computed in code) · an AI view with three verdicts: **apply for listing gains**, **short-term holding** and **long-term holding** · how recent IPOs listed and have done since |
+| **Breakout scanner** | Scans ~750 stocks every day for strong stocks pressing against their 20-day high **before** they close above it (rules, presets and filters by cap and sector are adjustable), with a chart per candidate · a built-in **backtest** of the same rules on 3/5/7 years of history: how often a signal broke out within 10 sessions and how often cleanly (+10% without failing), against all stocks near their highs, year by year · the rules exported as a **Chartink** scan. On 2024–26 data the default rules broke out ~70% of the time and cleanly ~1 time in 3 (vs ~40% / ~16% for any stock near its high), so two in three picks still fail or stall. The textbook "tight base / volume drying up" setup is included as a preset so you can see it test worse |
 | **Stock search** | Type a company name, NSE symbol, old symbol or former name in any case (`borosil`, `sbi`, `Zomato`, `vedant fashions`, `relaince`). It covers every NSE mainboard and SME stock (~3,200), 500+ old symbols and ~700 former names from NSE's own change lists, everyday short forms (SBI, HUL, L&T, RIL) and small typos. When the text fits several companies (there are three Borosils) you pick one instead of getting an error |
 | **Stock universe** | All ~750 Nifty Total Market stocks classified by **NSE sector, finer industry, market-cap bucket (large/mid/small/micro) and index membership**; filter and browse as a sector → industry → stock map |
 | **Peers** | Same-industry companies (NSE classification) on a P/E vs ROE bubble map + table |
@@ -44,6 +45,8 @@ powered by the same engine.
 | ![](docs/screenshots/horizon_ratings.png) | ![](docs/screenshots/horizons_plan.png) | ![](docs/screenshots/levels_breakouts.png) |
 | **News & results** | **Stock universe** | **IPO centre** |
 | ![](docs/screenshots/news_results.png) | ![](docs/screenshots/stock_universe.png) | ![](docs/screenshots/ipo_centre.png) |
+| **Breakout scanner** | **Scanner backtest** | |
+| ![](docs/screenshots/breakout_scanner.png) | ![](docs/screenshots/breakout_backtest.png) | |
 
 *Screenshots use live data (Yahoo Finance, NSE, Google News) from 2 Nov 2026 and are illustrations, not views on any stock.*
 
@@ -242,6 +245,8 @@ isa/
   fundamentals.py          ratios, Piotroski, Altman Z''-EM, red flags, health score
   valuation.py             multiples, P/E band, DCF + reverse DCF, justified P/B, peers, football field
   analysis.py              builds the fact pack (the only thing the AI sees)
+  scanner.py               breakout scanner, its backtest and Chartink export
+  search.py                stock search (names, old symbols, short forms, typos)
   llm.py / ai.py           provider-agnostic LLM client, report generation, number audit
   charts.py / report.py    Plotly charts, HTML/Markdown export
   cli.py                   command line
