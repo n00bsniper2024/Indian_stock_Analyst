@@ -10,12 +10,12 @@ SCRIPT = r"""
 import os, sys
 from pathlib import Path
 from streamlit.testing.v1 import AppTest
-env = Path('.env'); before = env.read_text() if env.exists() else None
+env = Path('.env'); before = env.read_text(encoding='utf-8') if env.exists() else None
 at = AppTest.from_file('app.py', default_timeout=120); at.run()
 assert not any(c.key == 'remember_key' for c in at.checkbox), 'remember box shown in public mode'
 box = next(t for t in at.text_input if (t.key or '').startswith('key_in::'))
 box.input('sk-visitor-secret-1234567890').run()
-after = env.read_text() if env.exists() else None
+after = env.read_text(encoding='utf-8') if env.exists() else None
 assert before == after, '.env was modified'
 assert 'sk-visitor-secret-1234567890' not in os.environ.values(), 'key leaked into the server environment'
 assert any('this browser tab only' in i.value for i in at.info), 'tab-only notice missing'

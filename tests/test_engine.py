@@ -278,7 +278,7 @@ def test_as_points_splits_tagged_paragraphs():
     import re as _re
     from pathlib import Path
 
-    src = Path(__file__).resolve().parent.parent.joinpath("app.py").read_text()
+    src = Path(__file__).resolve().parent.parent.joinpath("app.py").read_text(encoding="utf-8")
     tree = ast.parse(src)
     ns = {"re": _re}
     for node in tree.body:

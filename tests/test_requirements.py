@@ -9,12 +9,12 @@ PIP_NAME = {"dotenv": "python-dotenv", "yaml": "pyyaml", "PIL": "pillow"}
 
 
 def test_all_imports_are_declared():
-    declared = {re.split(r"[<>=!~\[ ]", ln.strip())[0].lower() for ln in (ROOT / "requirements.txt").read_text().splitlines()
+    declared = {re.split(r"[<>=!~\[ ]", ln.strip())[0].lower() for ln in (ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines()
                 if ln.strip() and not ln.startswith("#")}
     stdlib = set(sys.stdlib_module_names) | {"__future__"}
     missing = set()
     for f in [ROOT / "app.py", *(ROOT / "isa").glob("*.py")]:
-        for node in ast.walk(ast.parse(f.read_text())):
+        for node in ast.walk(ast.parse(f.read_text(encoding="utf-8"))):
             names = [a.name for a in node.names] if isinstance(node, ast.Import) else \
                     [node.module] if isinstance(node, ast.ImportFrom) and node.module and node.level == 0 else []
             for n in names:

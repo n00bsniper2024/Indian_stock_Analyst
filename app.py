@@ -427,7 +427,7 @@ def _ai_cache_path(kind: str, symbol: str) -> "os.PathLike":
 def _load_ai(kind: str, symbol: str):
     p = _ai_cache_path(kind, symbol)
     try:
-        return json.loads(p.read_text()) if p.exists() else None
+        return json.loads(p.read_text(encoding="utf-8")) if p.exists() else None
     except Exception:
         return None
 
@@ -435,7 +435,7 @@ def _load_ai(kind: str, symbol: str):
 def _save_ai(kind: str, symbol: str, data: dict) -> None:
     if data and not data.get("_parse_error"):
         try:
-            _ai_cache_path(kind, symbol).write_text(json.dumps(data, ensure_ascii=False, default=str))
+            _ai_cache_path(kind, symbol).write_text(json.dumps(data, ensure_ascii=False, default=str), encoding="utf-8")
         except Exception:
             pass
 
