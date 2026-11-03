@@ -1,0 +1,64 @@
+name: installers
+# Runs the same one-line installers a user would run, on fresh Windows, macOS and Linux machines,
+# then starts the dashboard and checks that it answers.
+on:
+  push:
+    paths: ["scripts/**", "requirements.txt", ".github/workflows/installers.yml", "app.py", "isa/**"]
+  workflow_dispatch:
+jobs:
+  unix:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run installer (uses this commit's code instead of downloading main)
+        run: bash scripts/get.sh
+        env:
+          ISA_SOURCE_DIR: ${{ github.workspace }}
+          ISA_HOME: ${{ runner.temp }}/IndianStockAnalyst
+          ISA_NO_LAUNCH: "1"
+      - name: Start the dashboard and check it answers
+        run: |
+          cd "$RUNNER_TEMP/IndianStockAnalyst"
+          ISA_DEMO=1 ISA_PORT=8599 nohup scripts/start.sh > app.log 2>&1 &
+          for i in $(seq 1 90); do curl -fs http://localhost:8599/_stcore/health && exit 0; sleep 2; done
+          cat app.log; exit 1
+      - name: Smoke-test every page with the installed environment
+        run: |
+          cd "$RUNNER_TEMP/IndianStockAnalyst"
+          ISA_DEMO=1 .venv/bin/python -c "from streamlit.testing.v1 import AppTest; at=AppTest.from_file('app.py', default_timeout=240); at.run(); assert not at.exception, at.exception; [at.sidebar.radio[0].set_value(v).run() for v in at.sidebar.radio[0].options]; assert not at.exception, at.exception; print('all pages OK')"
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run installer (uses this commit's code instead of downloading main)
+        shell: powershell
+        run: |
+          $env:ISA_SOURCE_DIR = "$env:GITHUB_WORKSPACE"
+          $env:ISA_HOME = "$env:RUNNER_TEMP\Indian Stock Analyst"
+          $env:ISA_NO_LAUNCH = "1"
+          & .\scripts\get.ps1
+          if (-not (Test-Path "$env:ISA_HOME\.venv\Scripts\python.exe")) { throw "venv missing" }
+          if (-not (Test-Path ([Environment]::GetFolderPath('Desktop') + '\Indian Stock Analyst.lnk'))) { throw "shortcut missing" }
+      - name: Start the dashboard with the launcher and check it answers
+        shell: powershell
+        run: |
+          $dir = "$env:RUNNER_TEMP\Indian Stock Analyst"
+          $env:ISA_DEMO = "1"
+          Start-Process -FilePath "$dir\scripts\start-windows.bat" -WorkingDirectory $dir -RedirectStandardOutput "$dir\app.log"
+          for ($i = 0; $i -lt 90; $i++) {
+            try { $r = Invoke-WebRequest -UseBasicParsing http://localhost:8501/_stcore/health; if ($r.Content -eq 'ok') { Write-Host 'dashboard answers'; exit 0 } } catch {}
+            Start-Sleep 2
+          }
+          Get-Content "$dir\app.log"; exit 1
+      - name: Smoke-test every page with the installed environment
+        shell: powershell
+        run: |
+          $dir = "$env:RUNNER_TEMP\Indian Stock Analyst"
+          Set-Location $dir
+          $env:ISA_DEMO = "1"
+          & "$dir\.venv\Scripts\python.exe" -c "from streamlit.testing.v1 import AppTest; at=AppTest.from_file('app.py', default_timeout=240); at.run(); assert not at.exception, at.exception; [at.sidebar.radio[0].set_value(v).run() for v in at.sidebar.radio[0].options]; assert not at.exception, at.exception; print('all pages OK')"
+          if ($LASTEXITCODE) { exit 1 }

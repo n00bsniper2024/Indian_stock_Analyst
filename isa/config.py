@@ -5,17 +5,22 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parent.parent
+
 try:
     from dotenv import load_dotenv
 
-    load_dotenv()
+    load_dotenv(ROOT / ".env")  # the project's .env, whatever folder the app was started from
 except Exception:  # dotenv is optional
     pass
 
-ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
 PROMPTS_DIR = ROOT / "prompts"
 CACHE_DIR = Path(os.getenv("ISA_CACHE_DIR", ROOT / ".cache"))
+
+# Public mode = one server shared by many visitors (e.g. Streamlit Community Cloud, which runs apps from /mount/src).
+# Keys typed in the browser then stay in that browser tab only and are never written to the server.
+PUBLIC_MODE = os.getenv("ISA_PUBLIC", "").strip().lower() in ("1", "true", "yes") or Path("/mount/src").is_dir()
 
 
 def _f(name: str, default: float) -> float:

@@ -7,6 +7,7 @@ from __future__ import annotations
 import hmac
 import json
 import os
+from pathlib import Path
 import re
 import time
 from dataclasses import replace
@@ -18,7 +19,7 @@ import streamlit as st
 from isa import charts
 from isa.ai import generate_report, qa_messages
 from isa.analysis import build_fact_pack, fact_pack_json, find_peers
-from isa.config import DEMO_MODE, ValuationDefaults
+from isa.config import DEMO_MODE, PUBLIC_MODE, ValuationDefaults
 from isa.data import get_batch_prices, get_peer_info, get_stock, resample_ohlcv
 from isa.fundamentals import annual_table, quarterly_table
 from isa.llm import PROVIDERS, LLMError, default_key, list_models, stream_chat
@@ -38,7 +39,7 @@ from isa.patterns import frames as tf_frames
 from isa.universe import CATEGORIES, flat_categories, industries_from_nifty500, load_all_equities, load_index
 from isa.valuation import pe_band, peer_table, valuation_summary
 
-st.set_page_config(page_title="Indian Stock Analyst", page_icon=":material/monitoring:", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="Indian Stock Analyst", page_icon=str(Path(__file__).parent / "docs" / "icon.png"), layout="wide", initial_sidebar_state="auto")
 
 
 st.markdown(theme.css(), unsafe_allow_html=True)
@@ -172,7 +173,7 @@ with st.sidebar:
         def _take_key(env_name: str = p.env_key, wkey: str = wkey, skey: str = skey) -> None:
             val = (st.session_state.get(wkey) or "").strip()
             if val:
-                if st.session_state.get("remember_key", True):
+                if st.session_state.get("remember_key", True) and not PUBLIC_MODE:
                     save_key(env_name, val)          # stored server-side in .env (chmod 600)
                     st.session_state.pop(skey, None)
                 else:
@@ -183,23 +184,27 @@ with st.sidebar:
         session_val = st.session_state.get(skey, "")
         api_key = session_val or saved
         if saved and not session_val:
-            st.success(f":material/lock: {provider} key saved on this server ({mask(saved)})", icon=None)
+            st.success(f":material/lock: {provider} key {'provided by the host' if PUBLIC_MODE else 'saved on this computer'} ({mask(saved)})", icon=None)
             c1, c2 = st.columns(2)
-            if c2.button("Remove", key=f"rm::{provider}", width="stretch",
-                         help="Delete the saved key from this server's .env file"):
+            if not PUBLIC_MODE and c2.button("Remove", key=f"rm::{provider}", width="stretch",
+                                             help="Delete the saved key from this server's .env file"):
                 remove_key(p.env_key)
                 st.rerun()
-            with c1.popover("Replace", width="stretch"):
+            with c1.popover("Use my own" if PUBLIC_MODE else "Replace", width="stretch"):
                 st.text_input("New API key", type="password", key=wkey, on_change=_take_key, placeholder="paste and press Enter")
         else:
             if session_val:
                 st.info(f"Using a key for this browser tab only ({mask(session_val)}).")
             st.text_input(f"API key ({p.env_key})", type="password", key=wkey, on_change=_take_key,
                           placeholder="paste your key and press Enter",
-                          help="The key is stored on the server, never shown again in the browser.")
-            st.checkbox("Remember on this server", value=True, key="remember_key",
-                        help="Saves the key in the project's .env file (readable only by your user). "
-                             "Untick to keep it for this browser tab only.")
+                          help="Never shown again in the browser." if not PUBLIC_MODE else
+                               "Kept in this browser tab only and forgotten when you close it.")
+            if PUBLIC_MODE:
+                st.caption(":material/public: Shared server: your key is used for this tab only and never saved.")
+            else:
+                st.checkbox("Remember on this computer", value=True, key="remember_key",
+                            help="Saves the key in the project's .env file (readable only by your user). "
+                                 "Untick to keep it for this browser tab only.")
         if p.key_url:
             st.caption(f"[Get a {provider} key]({p.key_url})")
     mk = f"models::{provider}"

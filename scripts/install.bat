@@ -1,11 +1,13 @@
 @echo off
-REM One-time setup on Windows. Double-click or run from the repo folder.
+REM Windows installer for a downloaded copy (GitHub: Code -> Download ZIP -> extract -> double-click this file).
+REM No Python needed: it installs "uv", which brings its own Python 3.12, into your user folder.
+REM The app is installed right here, in the folder you extracted. Then use the Desktop / Start menu shortcut.
 cd /d "%~dp0.."
-python -m venv .venv || (echo Install Python 3.10+ from https://www.python.org/downloads/ and tick "Add to PATH" && pause && exit /b 1)
-call .venv\Scripts\activate.bat
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-if not exist .env copy .env.example .env
-echo.
-echo Installed. Put your API key in .env (optional), then run scripts\run.bat
+set "ISA_SOURCE_DIR=%CD%"
+set "ISA_HOME=%CD%"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0get.ps1"
+if errorlevel 1 (
+  echo.
+  echo Installation failed - see the message above.
+)
 pause

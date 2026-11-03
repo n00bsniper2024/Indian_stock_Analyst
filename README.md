@@ -68,33 +68,67 @@ the design takes that seriously.
 
 ---
 
-## Quick start (step by step)
+## Install on your laptop (Windows, macOS, Linux) — no Python or Git needed
 
-You need **Python 3.10 or newer** and **Git**. No programming required.
+One line installs everything into your user folder (no admin rights), puts an **Indian Stock Analyst** icon on your
+Desktop / Start menu, and opens the dashboard in your browser. It installs [uv](https://docs.astral.sh/uv/), a small
+tool that brings its own Python 3.12, so you don't need to install Python and nothing already on your computer is changed.
+First install takes about 3–5 minutes and ~600 MB of disk; after that the icon opens it in seconds.
 
-### Windows
-1. Install Python from <https://www.python.org/downloads/> — tick **"Add python.exe to PATH"** during setup.
-2. Install Git from <https://git-scm.com/download/win>.
-3. Open **Command Prompt** and run:
-   ```bat
-   git clone https://github.com/n00bsniper2024/Indian_stock_Analyst.git
-   cd Indian_stock_Analyst
-   scripts\install.bat
-   scripts\run.bat
+### Windows 10 / 11
+1. Click **Start**, type **PowerShell**, press **Enter**.
+2. Paste this line and press **Enter**:
+   ```powershell
+   irm https://raw.githubusercontent.com/n00bsniper2024/Indian_stock_Analyst/main/scripts/get.ps1 | iex
    ```
-4. Your browser opens at <http://localhost:8501>.
+3. When it finishes, the dashboard opens in your browser. Next time, double-click **Indian Stock Analyst** on the Desktop.
 
-### Linux / macOS
+A black window titled *"Indian Stock Analyst – keep this window open"* runs the app; closing it stops the dashboard.
+
+<details><summary>Prefer not to paste commands? (ZIP download)</summary>
+
+On this page click **Code → Download ZIP**, extract it (right-click → *Extract All*), open the extracted folder,
+then `scripts` and double-click **install.bat**. If Windows shows *"Windows protected your PC"*, click
+**More info → Run anyway** (the script is not code-signed; you can read it first — it is plain text).
+</details>
+
+### macOS
+1. Open **Terminal** (press **⌘ + Space**, type *Terminal*, press **Enter**).
+2. Paste this line and press **Enter**:
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/n00bsniper2024/Indian_stock_Analyst/main/scripts/get.sh | bash
+   ```
+3. Next time, double-click **Indian Stock Analyst** on your Desktop.
+
+### Linux
+Same line as macOS, in any terminal. Afterwards open **Indian Stock Analyst** from your applications menu, or run
+`~/IndianStockAnalyst/scripts/start.sh`.
+
+### Updating, adding your key, uninstalling
+| Task | How |
+|---|---|
+| **Update** to the latest version | run the same install line again — your saved keys and cached data are kept |
+| **Add your AI key** | paste it in the sidebar under *AI engine* (it is saved on your computer only, see below) |
+| **Uninstall** | delete the folder (Windows `%LOCALAPPDATA%\IndianStockAnalyst`, macOS/Linux `~/IndianStockAnalyst`) and the shortcut. Optional: remove uv with `uv self uninstall` |
+
+### What the installer does (so you can trust it)
+The scripts are short and readable: [`scripts/get.ps1`](scripts/get.ps1) (Windows) and [`scripts/get.sh`](scripts/get.sh)
+(macOS/Linux). They download this repository's code from GitHub, install uv from astral.sh, create a private Python
+environment inside the app folder, install the libraries listed in `requirements.txt` from PyPI, and create a shortcut.
+Every push is tested by running these exact installers on fresh Windows, macOS and Linux machines (see the
+*installers* check on GitHub).
+
+### For developers (Git)
 ```bash
 git clone https://github.com/n00bsniper2024/Indian_stock_Analyst.git
 cd Indian_stock_Analyst
-bash scripts/install.sh
-bash scripts/run.sh
+bash scripts/install.sh && bash scripts/run.sh      # needs Python 3.10+
 ```
-Open <http://localhost:8501>.
+
+## Running it on a server
 
 ### On a remote Linux server through VS Code (Remote-SSH)
-1. In VS Code's terminal (connected to the server) run the Linux commands above.
+1. In VS Code's terminal (connected to the server) run the developer (Git) commands above.
 2. VS Code detects port **8501** and shows *"Open in Browser"* — click it. If it doesn't, open the **Ports** panel
    (View → Ports), click **Forward a Port**, type `8501`, then open the local address it shows.
 3. The app listens on `localhost` only by default, so it is not exposed to the internet — keep it that way unless you
@@ -147,11 +181,11 @@ Demo mode uses synthetic data (clearly labelled) so you can explore the interfac
 ## Adding your AI key
 
 1. Get a key from your chosen provider (links below).
-2. Paste it into the sidebar and press **Enter**. With **Remember on this server** ticked (default) it is saved in the
+2. Paste it into the sidebar and press **Enter**. With **Remember on this computer** ticked (default) it is saved in the
    project's `.env` file (readable only by your user) and survives refreshes and restarts. The browser only ever shows
    the last 4 characters; use **Replace** or **Remove** in the sidebar to change it. Untick the box to keep a key for
    the current browser tab only.
-3. In the sidebar click **Load models**, pick a model, open a stock, go to **🤖 AI report → Generate**.
+3. In the sidebar click **Load models**, pick a model, open a stock, go to **AI report → Generate**.
 
 `.env` is git-ignored — never commit keys or paste them into issues.
 
@@ -230,9 +264,14 @@ docker run -p 8501:8501 --env-file .env indian-stock-analyst
 ```
 
 ## Hosting it for others (Streamlit Community Cloud)
-Fork the repo → <https://share.streamlit.io> → New app → `app.py`. Leave keys out of the repo; each visitor pastes
-their own key in the sidebar, or the owner adds keys under *App settings → Secrets* (then **anyone with the link spends
-the owner's credits** — add authentication first). All visitors share one IP for Yahoo requests, so expect rate limits.
+Fork the repo → <https://share.streamlit.io> → New app → `app.py`. The app detects Streamlit Cloud (or any server
+started with `ISA_PUBLIC=1`) and switches to **public mode**: a visitor's key is used for their browser tab only and is
+never written to the server, so one visitor can never use or delete another's key. If the owner adds keys under
+*App settings → Secrets*, **anyone with the link spends the owner's credits** — add authentication first.
+
+Expect a worse experience than on a laptop: every visitor shares one cloud IP address, Yahoo rate-limits it, and
+NSE often blocks cloud servers outright (index lists, filings and IPO data then fall back or fail). For most people
+the laptop install above is the better option.
 
 ---
 
